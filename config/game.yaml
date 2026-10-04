@@ -1,0 +1,58 @@
+fog_decay_days: 60
+
+points:
+  capture_unit_fresh: 10
+  capture_unit_refresh: 3
+  verify_vote_consensus: 2
+  fixed_it_contributor: 50
+  negative_finding_bonus: 0      # non-compliant earns the same as compliant
+
+provisional_hold_hours: 24
+
+hotspots:
+  sources:                        # in priority order
+    - known_blackspots            # pedestrian accident black spots where public data exists
+    - issue_clusters              # dense non-compliant units from our own ledger
+    - suspected_from_fog          # large unseen clusters
+    - low_confidence_clusters     # model unsure
+    - user_reported               # flagged by players
+  radius_m: 150
+  active_per_ward: 3
+  rotation: weekly
+  bonus_points: 40
+  first_capture_bonus: 25
+  raids:
+    enabled: true
+    distinct_walkers_required: 3
+    window_hours: 72
+    raid_bonus: 60                # each participant, after raid completes
+  safety:
+    exclude_highway: [motorway, trunk]
+    daylight_only: true
+
+collections:                      # Pokémon Go-style sets, no AR
+  - id: metro_approaches
+    name: "Every footpath to your metro station"
+  - id: school_zones
+    name: "Safe routes to school"
+  - id: ward_complete
+    name: "Clear your whole ward"
+
+anticheat:
+  walker_max_speed_kmh: 8
+  max_gps_jump_m: 60
+  min_frames_per_unit: 2
+  phash_dup_threshold: 6
+  hotspot_min_frames_inside_radius: 5
+
+verify:
+  votes_for_consensus: 3
+
+ward_unlocks:
+  - coverage_pct: 50
+    action: publish_ward_report
+  - coverage_pct: 80
+    action: request_formal_audit
+
+flags:
+  partner_rewards: false

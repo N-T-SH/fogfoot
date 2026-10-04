@@ -1,0 +1,32 @@
+source:
+  judgment: "TODO: case name, citation, date (19 June 2026)"
+  paragraphs: "TODO"
+  supplementary_standards:
+    - "IRC guidance on minimum clear width (~1.8 m) — verify edition"
+
+statuses: [compliant, non_compliant, no_footpath, unknown]
+
+criteria:                     # each maps to rubric checks
+  duty_to_provide:
+    description: "A road exists, so a footpath is owed"
+    fails_when: "footpath_present == false"
+    status_on_fail: no_footpath
+  demarcated:
+    description: "Footpath is demarcated from the carriageway"
+    fails_when: "demarcated == false"
+  maintained:
+    description: "Surface is maintained and walkable"
+    fails_when: "surface_ok == false or kerb_walkable == false"
+  unobstructed_by_vehicles:
+    description: "Pedestrian right outranks vehicle use of the footpath"
+    fails_when: "'parking' in issues"
+  continuous_and_wide:
+    description: "Continuous, with adequate clear width (supplementary standard)"
+    fails_when: "continuous == false or clear_width_ok == false"
+
+output:
+  every_non_compliant_unit_lists: [criteria_failed, issue_codes, evidence_frame_ids, last_seen]
+
+vending_policy: >
+  Vendors are recorded as context, not as a compliance failure on their own.
+  Assess clear width remaining, not who occupies the rest.

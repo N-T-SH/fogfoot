@@ -1,0 +1,25 @@
+[project]
+name = "fogfoot"
+version = "0.1.0"
+description = "fogfoot batch pipeline: kerb units, matching, scoring, compliance, exports"
+requires-python = ">=3.11"
+dependencies = [
+  "geopandas>=1.0", "shapely>=2.0", "pyproj>=3.6", "pyogrio>=0.9", "rtree>=1.2",
+  "pydantic>=2.6", "pyyaml>=6", "typer>=0.12", "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "matplotlib>=3.8"]
+
+[project.scripts]
+fogfoot = "fogfoot.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["fogfoot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

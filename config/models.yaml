@@ -1,0 +1,23 @@
+baseline_candidates:
+  - "qwen-vl (7B class, latest)"
+  - "gemma-3 multimodal (latest small)"
+  - "internvl (latest small)"
+scoring:
+  max_frames_per_unit: 3
+  min_new_frames_to_rescore: 2
+  monthly_frame_budget: 100000    # set from real cost in Phase 3; over budget -> 'awaiting assessment'
+  prefer: [cpu_quantised, donated_gpu, hosted_payg]
+serving:
+  engine: llamacpp_or_vllm
+  endpoint_env: FOGFOOT_VLM_ENDPOINT
+  model_env: FOGFOOT_VLM_MODEL
+finetune:
+  method: lora
+  base_model_env: FOGFOOT_FT_BASE
+  rank: 16
+  epochs: 3
+  min_labels_to_train: 2000
+  holdout_by: ward               # evaluate on wards not seen in training
+  promote_if:
+    macro_f1_gain: 0.03
+    no_status_regression: true

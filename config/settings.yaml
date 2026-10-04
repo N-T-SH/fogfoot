@@ -1,0 +1,66 @@
+pilot:
+  name: tech-hub-cluster
+  ward_kml_url: https://data.opencity.in/dataset/863209cb-4ced-4f51-b5c5-156939c50922/resource/9013d656-8051-4e2d-9648-46efd0d86d3d/download/gba-369-wards-december-2025.kml
+  # Matched against the KML `ward_name` column (case-insensitive substring). The 2025 delimitation spells
+  # Koramangala "Kormangala", and HSR sector 2 lies in "Agara", so patterns are listed by actual ward names.
+  # Note `ward_id` repeats across corporations; wards are keyed on the KML `id2` instead.
+  ward_name_patterns: ["Indiranagar", "Kormangala", "HSR Layout", "Agara"]
+  bbox_buffer_m: 200
+
+osm:
+  overpass_url: https://overpass-api.de/api/interpreter
+  user_agent: "fogfoot/0.1 (civic footpath mapping; https://github.com/N-T-SH/fogfoot)"
+  cache_dir: data/osm
+  timeout_s: 180
+
+units:
+  projected_crs: EPSG:32643       # UTM 43N, metres
+  drop_median_side: true          # on one-way carriageways, skip the kerb facing an opposing carriageway
+  length_m: 100
+  min_length_m: 30
+  kerb_offset_by_highway:
+    primary: 9
+    secondary: 7
+    tertiary: 5.5
+    residential: 4
+    unclassified: 4
+    default: 4.5
+  include_highway: [primary, secondary, tertiary, residential, unclassified, living_street]
+
+capture:
+  sample_every_m: 10              # ~200 frames per 2 km; governor may widen to 15 m on slow devices
+  gate:
+    min_sharpness: 40             # Laplacian variance on a downscaled copy; tune in Spike A
+    min_mean_luma: 45
+    drop_phash_dups: true
+  jpeg_quality: 0.6
+  max_width_px: 960               # 720p camera stream; keeps ~60-80 KB/frame
+  daylight_only_default: true
+  upload_wifi_only_default: true
+  max_queue_mb: 300               # also capped to 40% of free quota
+  low_battery_pct: 20             # warn and widen sampling
+  critical_battery_pct: 10        # stop capture, save queue
+  max_frame_encode_ms: 60         # governor widens sampling if exceeded
+  min_gps_accuracy_m: 35          # frames above this are flagged low side_conf, not discarded
+  heading_fallback: gps_course    # when DeviceOrientation unavailable or uncalibrated
+
+app_budgets:
+  initial_js_kb_gz: 150
+  first_load_kb: 400
+  max_features_on_screen: 3000
+
+storage:
+  sqlite_path: data/fogfoot.sqlite
+  frames_dir: data/frames
+  keep_raw_frames: false
+  frame_retention_days: 7         # private copies in R2; public imagery lives on Mapillary
+
+mapillary:
+  push: true
+  token_env: MAPILLARY_TOKEN
+  organization_env: MAPILLARY_ORG_ID
+  push_after: blur            # never push unblurred frames; Mapillary's blur is a second layer
+  credit_contributors: false  # push under the org account; per-user credit only with explicit opt-in
+
+maps:
+  google_maps_key_env: GOOGLE_MAPS_API_KEY
