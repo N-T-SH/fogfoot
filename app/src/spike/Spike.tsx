@@ -1,20 +1,29 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { bearingDeg, envReport, haversineM, qualityGate } from "./measure";
+import { angleDiffDeg, bearingDeg, cameraHeadingDeg, cfgFromUrl, envReport, haversineM, qualityGate } from "./measure";
 import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
 
 // Spike A: measure whether eyes-up PWA capture is viable on low-end Android and iOS.
 // Defaults mirror config/settings.yaml `capture:`; tune from the exported report.
-const CFG = { sampleEveryM: 10, jpegQuality: 0.6, maxWidth: 960, minSharpness: 40, minLuma: 45, maxGpsAccM: 35 };
+const CFG = cfgFromUrl(
+  { sampleEveryM: 10, jpegQuality: 0.6, maxWidth: 960, minSharpness: 40, minLuma: 45, maxGpsAccM: 35 },
+  { every: "sampleEveryM", q: "jpegQuality", w: "maxWidth", sharp: "minSharpness", luma: "minLuma", acc: "maxGpsAccM" }
+);
 
 interface Stats {
   kept: number; blurry: number; dark: number; badGps: number;
   gateMs: number[]; encodeMs: number[]; bytes: number;
   longTasks: number; gpsAcc: number | null; headingSource: string; distanceM: number;
   startedAt: number | null; startBattery: number | null; battery: number | null; heapMB: number | null;
+  gateDrawMs: number[]; gateReadMs: number[]; gateComputeMs: number[];
+  gpsFixes: number; lastFixAt: number | null; fixGapsMs: number[]; busySkips: number;
+  hiddenCount: number; wakeLock: string; persist: string;
+  headingDiffFormula: number[]; headingDiffAlphaOnly: number[];
 }
 const fresh = (): Stats => ({
   kept: 0, blurry: 0, dark: 0, badGps: 0, gateMs: [], encodeMs: [], bytes: 0, longTasks: 0,
-  gpsAcc: null, headingSource: "none", distanceM: 0, startedAt: null, startBattery: null, battery: null, heapMB: null
+  gpsAcc: null, headingSource: "none", distanceM: 0, startedAt: null, startBattery: null, battery: null, heapMB: null,
+  gateDrawMs: [], gateReadMs: [], gateComputeMs: [], gpsFixes: 0, lastFixAt: null, fixGapsMs: [], busySkips: 0,
+  hiddenCount: 0, wakeLock: "not requested", persist: "not requested", headingDiffFormula: [], headingDiffAlphaOnly: []
 });
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const pct = (a: number[], p: number) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
@@ -41,7 +50,7 @@ export function Spike() {
       if (DOE?.requestPermission) { try { await DOE.requestPermission(); } catch { /* denied */ } }
 
       // 2. Persistent storage (helps against eviction).
-      if (navigator.storage?.persist) await navigator.storage.persist();
+      if (navigator.storage?.persist) s.persist = String(await navigator.storage.persist());
 
       // 3. Rear camera, 720p.
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -53,14 +62,23 @@ export function Spike() {
       // 4. Wake lock (foreground only).
       try {
         const wl = await (navigator as Navigator & { wakeLock?: { request(t: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock?.request("screen");
-        if (wl) cleanups.push(() => { wl.release().catch(() => {}); });
-      } catch { setMsg("Wake lock refused; screen may sleep."); }
+        if (wl) { s.wakeLock = "granted"; cleanups.push(() => { wl.release().catch(() => {}); }); } else s.wakeLock = "unsupported";
+      } catch (e) { s.wakeLock = `refused: ${(e as Error).message}`; setMsg("Wake lock refused; screen may sleep."); }
+      const onVis = () => { if (document.visibilityState === "hidden") live.current.stats.hiddenCount++; };
+      document.addEventListener("visibilitychange", onVis);
+      cleanups.push(() => document.removeEventListener("visibilitychange", onVis));
 
       // 5. Heading: compass if it actually reports, else GPS course.
-      let compass: number | null = null;
+      // `compass` = direction the back camera faces. Android: from absolute alpha/beta/gamma (correct when upright).
+      // iOS: webkitCompassHeading. `alphaOnly` (the naive 360 - alpha) is kept only to quantify how wrong it is.
+      let compass: number | null = null, alphaOnly: number | null = null;
       const onOri = (e: DeviceOrientationEvent) => {
         const w = (e as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
-        if (typeof w === "number") compass = w; else if (e.absolute && e.alpha != null) compass = (360 - e.alpha) % 360;
+        if (typeof w === "number") { compass = w; alphaOnly = w; }
+        else if (e.absolute && e.alpha != null && e.beta != null && e.gamma != null) {
+          compass = cameraHeadingDeg(e.alpha, e.beta, e.gamma);
+          alphaOnly = (360 - e.alpha) % 360;
+        }
       };
       window.addEventListener("deviceorientationabsolute" as "deviceorientation", onOri);
       window.addEventListener("deviceorientation", onOri);
@@ -96,16 +114,26 @@ export function Spike() {
         const st = live.current.stats;
         const cur = { lat: p.coords.latitude, lon: p.coords.longitude };
         st.gpsAcc = Math.round(p.coords.accuracy);
-        if (prev && haversineM(prev, cur) > 3) course = bearingDeg(prev, cur);
+        st.gpsFixes++;
+        const now = Date.now();
+        if (st.lastFixAt) st.fixGapsMs.push(now - st.lastFixAt);
+        st.lastFixAt = now;
+        if (prev && haversineM(prev, cur) > 3) {
+          course = bearingDeg(prev, cur);
+          // While walking forward with the camera forward, camera heading should match GPS course.
+          if (compass != null) st.headingDiffFormula.push(angleDiffDeg(compass, course));
+          if (alphaOnly != null) st.headingDiffAlphaOnly.push(angleDiffDeg(alphaOnly, course));
+        }
         prev = cur;
         if (p.coords.accuracy > CFG.maxGpsAccM) { st.badGps++; return; }
         if (last && haversineM(last, cur) < CFG.sampleEveryM) return;
-        if (busy || v.videoWidth === 0) return;
+        if (busy || v.videoWidth === 0) { if (busy) st.busySkips++; return; }
         busy = true;
         try {
           const t0 = performance.now();
           const gate = qualityGate(v, { minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, scratch);
           st.gateMs.push(performance.now() - t0);
+          st.gateDrawMs.push(gate.drawMs); st.gateReadMs.push(gate.readMs); st.gateComputeMs.push(gate.computeMs);
           if (!gate.ok) { if (gate.reason === "dark") st.dark++; else st.blurry++; return; }
           const t1 = performance.now();
           const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
@@ -139,6 +167,13 @@ export function Spike() {
       when: new Date().toISOString(), cfg: CFG, env, minutes: +mins.toFixed(1),
       kept: st.kept, dropped: { blurry: st.blurry, dark: st.dark, badGps: st.badGps },
       gateMs: { avg: +avg(st.gateMs).toFixed(1), p95: +pct(st.gateMs, 0.95).toFixed(1) },
+      gateSplitMsAvg: { draw: +avg(st.gateDrawMs).toFixed(1), read: +avg(st.gateReadMs).toFixed(1), compute: +avg(st.gateComputeMs).toFixed(1) },
+      gps: { fixes: st.gpsFixes, medianGapMs: Math.round(pct(st.fixGapsMs, 0.5)), p95GapMs: Math.round(pct(st.fixGapsMs, 0.95)), busySkips: st.busySkips },
+      headingVsGpsCourseDeg: {
+        samples: st.headingDiffFormula.length,
+        cameraFormulaMedian: +pct(st.headingDiffFormula, 0.5).toFixed(0), alphaOnlyMedian: +pct(st.headingDiffAlphaOnly, 0.5).toFixed(0)
+      },
+      wakeLock: st.wakeLock, persist: st.persist, pageHiddenCount: st.hiddenCount,
       encodeMs: { avg: +avg(st.encodeMs).toFixed(1), p95: +pct(st.encodeMs, 0.95).toFixed(1) },
       avgFrameKB: st.kept ? Math.round(st.bytes / st.kept / 1024) : 0, totalMB: +(st.bytes / 1e6).toFixed(1),
       distanceM: Math.round(st.distanceM), longTasks: st.longTasks, headingSource: st.headingSource,
@@ -170,6 +205,9 @@ export function Spike() {
         <tr><td>GPS accuracy</td><td>{stats.gpsAcc ?? "–"} m</td></tr>
         <tr><td>Heading source</td><td>{stats.headingSource}</td></tr>
         <tr><td>Gate ms avg / p95</td><td>{avg(stats.gateMs).toFixed(1)} / {pct(stats.gateMs, 0.95).toFixed(1)}</td></tr>
+        <tr><td>Gate split draw / read / compute</td><td>{avg(stats.gateDrawMs).toFixed(0)} / {avg(stats.gateReadMs).toFixed(0)} / {avg(stats.gateComputeMs).toFixed(0)} ms</td></tr>
+        <tr><td>Heading vs GPS course (median °)</td><td>{pct(stats.headingDiffFormula, 0.5).toFixed(0)} (naive {pct(stats.headingDiffAlphaOnly, 0.5).toFixed(0)})</td></tr>
+        <tr><td>Wake lock</td><td>{stats.wakeLock}</td></tr>
         <tr><td>Encode ms avg / p95</td><td>{avg(stats.encodeMs).toFixed(1)} / {pct(stats.encodeMs, 0.95).toFixed(1)}</td></tr>
         <tr><td>Avg frame size</td><td>{stats.kept ? Math.round(stats.bytes / stats.kept / 1024) : 0} KB</td></tr>
         <tr><td>Long tasks (jank)</td><td>{stats.longTasks}</td></tr>
