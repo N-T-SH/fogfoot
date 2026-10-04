@@ -1,5 +1,5 @@
 import { del, get, list, put } from "@vercel/blob";
-import type { Store } from "./coverage";
+import type { Store } from "./coverage.js";
 
 /** Vercel Blob adapter. The store is private: nothing is readable except through our own endpoints. */
 export const blobStore: Store = {

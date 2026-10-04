@@ -1,5 +1,5 @@
-import { blobStore } from "./_lib/blobStore";
-import { addBatch, readCoverage, validateBatch } from "./_lib/coverage";
+import { blobStore } from "./_lib/blobStore.js";
+import { addBatch, readCoverage, validateBatch } from "./_lib/coverage.js";
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...extra } });

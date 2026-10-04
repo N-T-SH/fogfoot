@@ -1,5 +1,5 @@
-import { blobStore } from "./_lib/blobStore";
-import { addBatch, readCoverage } from "./_lib/coverage";
+import { blobStore } from "./_lib/blobStore.js";
+import { addBatch, readCoverage } from "./_lib/coverage.js";
 
 /** GET /api/health: writes a dot to the private "healthcheck" area, reads it back, cleans up. Exercises the real storage path. */
 export async function GET() {
