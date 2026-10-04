@@ -1,13 +1,21 @@
-# Dots concept (replaces "fog" at walking scale)
+# Pick-up concept (was "dots"; working title)
 
-Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default demo: 790 real kerb units around Domlur, 70.7 km, 7,095 dots; `/#/dots?area=koramangala` for the Koramangala set).
+Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default demo: every kerb unit in the Domluru and Kodihalli wards, 1,260 units, 112 km, 11,259 items; `/#/dots?area=koramangala` for Koramangala; `/#/dots?room=test` is a separate shared room where simulated walks are uploaded too; `/#/icons` shows the icon set).
 
-Look: a light basemap with orange dots (white halo so they read on any map), red pulsing power pellets for hotspots, a faint green trail where dots were eaten, and a walking-person silhouette whose stride follows distance walked. Only the *dot-eating idea* is borrowed from Pac-Man, not its look.
+## What you see
+- **Top two thirds: the live camera**, so you can look at the road ahead while checking the phone. The map is the bottom third; **Expand map** gives it the whole screen and shrinks the camera to a corner window. The map is never expanded by default.
+- **Litter items instead of dots.** Every 10 m along a footpath sits a small, low-fidelity item drawn in code with an Indian flavour: toffee wrapper, water bottle, chai kulhad, snack packet, tender coconut, banana peel, plastic bag, masala sachet, cigarette butt, drink can, leaf plate. Garbage heaps stand in for hotspots. Walking a stretch **picks the items up**; they turn into small green markers (darker green = picked up more recently).
+- **Counter (bottom): items picked up** by you in the last 30 days, plus this walk and everyone's total.
+- **Shared between walkers.** What anyone picked up in the last 30 days shows green for everyone; after 30 days it becomes litter again. Your walks are saved on the phone straight away and uploaded when online.
+- A walking-person silhouette marks you on the map. Only the dot-eating idea is borrowed from Pac-Man, not its look.
+
+## Important: the items are game tokens, not detections
+An icon at a spot does **not** mean litter was seen there. If the map is read literally it would say every footpath in Domlur is full of rubbish. Before this goes public the UI must say so plainly, and the "picked up" language should be reconsidered; later the tokens could be replaced by real detections (the rubric already has `litter` and `garbage_blackspot` issue codes). Keep the game layer (tokens, pick-ups) apart from the compliance layer (what the footpath is actually like).
 
 ## The idea
 Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking the footpath eats the dots you pass. Dots regrow after `fog_decay_days` (60). Unit progress and ward coverage are just "share of dots eaten". Zoomed out, per-unit lines glow in proportion to progress (the fog overview survives as the city-scale view).
 
-## How it maps onto the existing design
+## How it maps onto the existing design (original dots framing)
 
 | Existing | Dots |
 |---|---|
@@ -40,3 +48,10 @@ Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking 
 
 ## Prototype controls
 Simulate walk (random route over real kerb units, speed ×6/12/24), Use my GPS (only counts inside the demo area), +30 days (fast-forward the clock to see regrowth), Street map (on by default; OpenStreetMap tiles for the prototype only, the real app uses its own tiles), Reset.
+
+## Shared coverage: how it works (prototype)
+- **Rules.** Covered = anyone walked it in the last 30 days (`WINDOW_DAYS`; the plan's old `fog_decay_days: 60` should become 30). Walking something covered less than 12 h ago does nothing; between 12 h and 30 days it refreshes the date.
+- **API.** `GET /api/coverage?area=domlur` returns `[dotKey, unixSeconds]` pairs for the last 30 days; `POST /api/coverage` takes at most 300 dots per batch. `GET /api/health` writes and reads back a test record through the real store. Code in `app/api/`, logic in `app/api/_lib/coverage.ts` with unit tests (`npm test`).
+- **Storage.** A private Vercel Blob store in Mumbai (`bom1`). Each upload is an immutable batch object; reads merge snapshot + batches (newest timestamp wins) and compact when there are more than 30 batches. Short CDN cache on reads.
+- **Simulated walks are not uploaded** (they would pollute the real map). They are uploaded only in the test room (`?room=test`).
+- **Known gaps (prototype):** no sign-in, so anyone can post coverage for any dot in the demo areas (limits: valid key format, at most 300 per batch, no future timestamps, known areas only); no per-user limits; coverage is anonymous (no user id is stored) but it does show where and when people walked, to 10 m. A real launch needs Google sign-in checked on the server, rate limits per account, and a consent line. Left/right kerb is not resolved by GPS (see above). Blob store operations have free-tier limits on the Hobby plan.

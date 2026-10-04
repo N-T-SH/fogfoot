@@ -4,7 +4,8 @@ import "./dots.css";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { buildField, dotsNear, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
-import { DECAY_DAYS, Progress } from "./progress";
+import { Coverage, WINDOW_DAYS } from "./coverage";
+import { itemIndex, makeSprites, type Sprites } from "./icons";
 
 const SIM_EAT_RADIUS_M = 7;
 const GPS_EAT_RADIUS_M = 12; // wider than the sim: phone GPS wobbles; side (L/R) is not resolved in this prototype
@@ -42,7 +43,13 @@ function drawWalker(ctx: CanvasRenderingContext2D, x: number, y: number, H: numb
 
 class DotLayer extends L.Layer {
   canvas!: HTMLCanvasElement;
-  constructor(private f: DotField, private prog: Progress, private avatar: () => Avatar | null) { super(); }
+  sprites: Sprites;
+  itemIdx: Uint8Array;
+  constructor(private f: DotField, private cov: Coverage, private avatar: () => Avatar | null) {
+    super();
+    this.sprites = makeSprites(Math.round(24 * Math.min(window.devicePixelRatio || 1, 2)));
+    this.itemIdx = Uint8Array.from(f.key, (k) => itemIndex(k));   // which litter item sits at each dot (stable)
+  }
 
   onAdd(map: L.Map) {
     this.canvas = L.DomUtil.create("canvas", "dots-canvas") as HTMLCanvasElement;
@@ -77,9 +84,9 @@ class DotLayer extends L.Layer {
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (const u of f.units) {
       if (!b.intersects(L.latLngBounds(u.ll.map(([lo, la]) => [la, lo] as [number, number])))) continue;
-      let eaten = 0;
-      for (let i = u.first; i < u.first + u.count; i++) if (this.prog.isEaten(f.key[i])) eaten++;
-      const frac = u.count ? eaten / u.count : 0;
+      let done = 0;
+      for (let i = u.first; i < u.first + u.count; i++) if (this.cov.state(f.key[i]) !== "none") done++;
+      const frac = u.count ? done / u.count : 0;
       ctx.beginPath();
       u.ll.forEach(([lo, la], i) => { const p = pt(la, lo); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
       if (zoom >= ZOOM_DOTS) { ctx.strokeStyle = "rgba(40,70,160,.20)"; ctx.lineWidth = u.shared ? 1.5 : 2.5; }
@@ -90,56 +97,69 @@ class DotLayer extends L.Layer {
     ctx.setLineDash([]);
 
     if (zoom >= ZOOM_DOTS) {
-      const r = zoom >= 18 ? 4.5 : zoom >= 17 ? 3.6 : 2.8;
-      const dots: number[] = [], pellets: number[] = [], trail: number[] = [];
+      const S = zoom >= 18 ? 17 : zoom >= 17 ? 12 : 9;               // litter icon size, CSS px: small, so a street reads as a trail, not a pile
+      const r = zoom >= 18 ? 2.4 : zoom >= 17 ? 1.9 : 1.5;           // "picked up" marker size
+      const fresh: number[] = [], mid: number[] = [], old: number[] = [], items: number[] = [], heaps: number[] = [];
       for (let i = 0; i < f.n; i++) {
         if (!b.contains([f.lat[i], f.lon[i]])) continue;
-        const p = pt(f.lat[i], f.lon[i]);
-        if (this.prog.isEaten(f.key[i])) trail.push(p.x, p.y);
-        else (f.power[i] ? pellets : dots).push(p.x, p.y);
+        const p = pt(f.lat[i], f.lon[i]), key = f.key[i];
+        if (this.cov.state(key) === "none") (f.power[i] ? heaps : items).push(p.x, p.y, this.itemIdx[i]);
+        else { const age = this.cov.ageDays(key)!; (age < 3 ? fresh : age < 14 ? mid : old).push(p.x, p.y); }
       }
       const circles = (xy: number[], rad: number) => { for (let i = 0; i < xy.length; i += 2) { ctx.moveTo(xy[i] + rad, xy[i + 1]); ctx.arc(xy[i], xy[i + 1], rad, 0, 6.2832); } };
-      ctx.fillStyle = "rgba(46,125,50,.55)"; ctx.beginPath(); circles(trail, r * 0.4); ctx.fill();     // where you have been
-      ctx.fillStyle = "#ffffff"; ctx.beginPath(); circles(dots, r + 1.8); ctx.fill();                 // halo so dots read on any map
-      ctx.fillStyle = "#ff9800"; ctx.beginPath(); circles(dots, r); ctx.fill();
-      const beat = 1 + 0.16 * Math.sin(performance.now() / 260), pr = r * 2.3 * beat;
-      ctx.fillStyle = "#ffffff"; ctx.beginPath(); circles(pellets, pr + 2); ctx.fill();
-      ctx.fillStyle = "#e53935"; ctx.beginPath(); circles(pellets, pr); ctx.fill();
+      const paint = (xy: number[], rad: number, color: string) => {
+        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); circles(xy, rad + 1.1); ctx.fill();
+        ctx.fillStyle = color; ctx.beginPath(); circles(xy, rad); ctx.fill();
+      };
+      paint(old, r, "#a5d6a1"); paint(mid, r, "#5fb865"); paint(fresh, r, "#2e8b3d");   // picked up: darker green = more recently
+      ctx.imageSmoothingEnabled = true;
+      for (let i = 0; i < items.length; i += 3) ctx.drawImage(this.sprites.items[items[i + 2]], items[i] - S / 2, items[i + 1] - S / 2, S, S);
+      const H = S * 1.7 * (1 + 0.1 * Math.sin(performance.now() / 260));                 // garbage heaps (hotspots) pulse gently
+      for (let i = 0; i < heaps.length; i += 3) ctx.drawImage(this.sprites.pile, heaps[i] - H / 2, heaps[i + 1] - H / 2, H, H);
     }
 
     const a = this.avatar();
-    if (a) { const p = pt(a.lat, a.lon); drawWalker(ctx, p.x, p.y, zoom >= 17 ? 40 : 32, a); }
+    if (a) { const p = pt(a.lat, a.lon); drawWalker(ctx, p.x, p.y, zoom >= 17 ? 30 : 24, a); }
   };
 }
 
 function DotsApp({ data }: { data: DemoFile }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const live = useRef({
-    f: null as DotField | null, prog: new Progress(), layer: null as DotLayer | null, map: null as L.Map | null,
+    f: null as DotField | null, cov: null as Coverage | null, layer: null as DotLayer | null, map: null as L.Map | null,
     avatar: null as Avatar | null, mode: "idle" as "idle" | "sim" | "gps", route: [] as [number, number][], cum: [] as number[], s: 0,
-    speed: 12, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
+    lastDraw: 0, speed: 12, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
   });
-  const [hud, setHud] = useState({ eaten: 0, total: 0, session: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "" });
+  const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false });
+  const videoEl = useRef<HTMLVideoElement>(null);
   const hudRef = useRef(hud); hudRef.current = hud;
   const patch = (p: Partial<typeof hud>) => setHud((h) => ({ ...h, ...p }));
 
-  const countEaten = () => {
-    const { f, prog } = live.current; if (!f) return 0;
-    let n = 0; for (let i = 0; i < f.n; i++) if (prog.isEaten(f.key[i])) n++; return n;
+  const tally = () => {
+    const { f, cov } = live.current; let picked = 0, covered = 0;
+    if (f && cov) for (let i = 0; i < f.n; i++) { const k = f.key[i]; if (cov.state(k) !== "none") covered++; if (cov.mineFresh(k)) picked++; }
+    return { picked, covered };
   };
-  const refreshHud = (extra: Partial<typeof hud> = {}) => patch({ eaten: countEaten(), days: live.current.prog.offsetDays, ...extra });
+  const refreshHud = (extra: Partial<typeof hud> = {}) => {
+    const c = live.current.cov!;
+    patch({ ...tally(), days: c.offsetDays, sync: c.sync.state, syncDetail: c.sync.detail, added: counters.current.added, refreshed: counters.current.refreshed, ...extra });
+  };
+  const counters = useRef({ added: 0, refreshed: 0 });
+  const shareWalks = useRef(false); // simulated walks stay on the device unless the test room is open
 
-  const eatAt = (lat: number, lon: number, radius: number) => {
+  const eatAt = (lat: number, lon: number, radius: number, share: boolean) => {
     const L_ = live.current, f = L_.f!; const [x, y] = toLocal(f, lon, lat);
-    let got = 0;
-    for (const i of dotsNear(f, x, y, radius)) if (!L_.prog.isEaten(f.key[i])) { L_.prog.eat(f.key[i]); got++; }
-    if (got) {
+    let added = 0;
+    for (const i of dotsNear(f, x, y, radius)) {
+      const r = L_.cov!.eat(f.key[i], share);
+      if (r === "new") { counters.current.added++; added++; } else if (r === "refresh") { counters.current.refreshed++; added++; }
+    }
+    if (added) {
       if (L_.avatar) L_.avatar.pulse = 1;
       const now = performance.now();
       if (now - L_.lastBuzz > 120) { L_.lastBuzz = now; try { navigator.vibrate?.(8); } catch { /* unsupported (iOS) */ } }
-      hudRef.current.session += got; // cheap mutable counter, flushed with the next HUD update
     }
-    return got;
+    return added;
   };
 
   const posAt = (s: number): [number, number] => {
@@ -150,16 +170,49 @@ function DotsApp({ data }: { data: DemoFile }) {
     return [route[lo][0] + t * (route[hi][0] - route[lo][0]), route[lo][1] + t * (route[hi][1] - route[lo][1])];
   };
 
-  const stop = () => {
+  /** Stop walking (sim or GPS) but leave the camera as it is. */
+  const halt = () => {
     const L_ = live.current;
     cancelAnimationFrame(L_.raf); if (L_.watch) navigator.geolocation.clearWatch(L_.watch);
-    L_.watch = 0; L_.mode = "idle"; L_.avatar = null; L_.prog.save(); L_.layer?.redraw();
+    L_.watch = 0; L_.mode = "idle"; L_.avatar = null; L_.cov?.save(); void L_.cov?.push(); L_.layer?.redraw();
     refreshHud({ mode: "idle" });
+  };
+
+  const startCamera = async () => {
+    const L_ = live.current;
+    if (L_.stream) return;
+    if (!navigator.mediaDevices?.getUserMedia) { patch({ cam: "denied", camMsg: "This browser can't show the camera. The map still works." }); return; }
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      L_.stream = s;
+      const v = videoEl.current!; v.srcObject = s; v.muted = true; await v.play().catch(() => undefined);
+      patch({ cam: "on", camMsg: "" });
+    } catch (e) {
+      const denied = (e as Error).name === "NotAllowedError";
+      patch({ cam: "denied", camMsg: denied ? "Camera permission was declined. The map still works." : `Camera unavailable (${(e as Error).message}).` });
+    }
+  };
+  const stopCamera = () => {
+    const L_ = live.current;
+    L_.stream?.getTracks().forEach((t) => t.stop()); L_.stream = null;
+    if (videoEl.current) videoEl.current.srcObject = null;
+    patch({ cam: "off" });
+  };
+  const lockScreen = async () => {
+    try { live.current.wake = (await (navigator as Navigator & { wakeLock?: { request(t: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock?.request("screen")) ?? null; } catch { /* refused */ }
+  };
+  const unlockScreen = () => { live.current.wake?.release().catch(() => undefined); live.current.wake = null; };
+  /** Stop walking, turn the camera off and let the screen sleep again. */
+  const stop = () => { halt(); stopCamera(); unlockScreen(); };
+
+  const toggleExpanded = () => {
+    patch({ expanded: !hudRef.current.expanded });
+    setTimeout(() => { live.current.map?.invalidateSize(); live.current.layer?.redraw(); }, 80);   // the map's box changed size
   };
 
   const startSim = () => {
     const L_ = live.current, f = L_.f!, map = L_.map!;
-    stop();
+    halt(); counters.current = { added: 0, refreshed: 0 }; void startCamera(); void lockScreen();
     const c = map.getCenter(), [cx, cy] = toLocal(f, c.lng, c.lat);
     let best = 0, bd = Infinity;
     f.units.forEach((u, i) => { const [x, y] = u.m[0]; const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = i; } });
@@ -179,11 +232,11 @@ function DotsApp({ data }: { data: DemoFile }) {
         phase: (prev?.phase ?? 0) + (2 * Math.PI * WALK_SPEED_MS * 2 * dt) / 1.4,        // cadence of a normal walk, not of the ×N speed-up
         face: prev && Math.abs(lon - prev.lon) > 2e-8 ? (lon > prev.lon ? 1 : -1) : prev?.face ?? 1,
       };
-      eatAt(lat, lon, SIM_EAT_RADIUS_M);
+      eatAt(lat, lon, SIM_EAT_RADIUS_M, shareWalks.current);
       if (t - L_.lastPan > 300) { L_.lastPan = t; const p = map.latLngToContainerPoint([lat, lon]), sz = map.getSize();
         if (p.x < sz.x * 0.25 || p.x > sz.x * 0.75 || p.y < sz.y * 0.3 || p.y > sz.y * 0.65) map.panTo([lat, lon], { animate: false }); }
-      L_.layer!.redraw();
-      if (t - L_.lastHud > 250) { L_.lastHud = t; refreshHud({ session: hudRef.current.session, mode: "sim" }); }
+      if (t - L_.lastDraw > 66) { L_.lastDraw = t; L_.layer!.redraw(); }                 // ~15 fps is plenty and kind to cheap phones
+      if (t - L_.lastHud > 250) { L_.lastHud = t; refreshHud({ mode: "sim" }); }
       L_.raf = requestAnimationFrame(tick);
     };
     refreshHud({ mode: "sim", msg: "" });
@@ -192,7 +245,7 @@ function DotsApp({ data }: { data: DemoFile }) {
 
   const startGps = () => {
     const L_ = live.current, f = L_.f!, map = L_.map!;
-    stop();
+    halt(); counters.current = { added: 0, refreshed: 0 }; void startCamera(); void lockScreen();
     if (!navigator.geolocation) { patch({ msg: "This device has no GPS." }); return; }
     L_.mode = "gps";
     L_.watch = navigator.geolocation.watchPosition((p) => {
@@ -207,10 +260,10 @@ function DotsApp({ data }: { data: DemoFile }) {
       const [x, y] = toLocal(f, lon, lat);
       const near = dotsNear(f, x, y, 40).length;
       if (p.coords.accuracy > MAX_GPS_ACC_M) { patch({ msg: `GPS is vague (${Math.round(p.coords.accuracy)} m), not counting yet.` }); }
-      else if (!near && hudRef.current.session === 0) patch({ msg: `You're outside the demo area (${data.name}). Try Simulate walk.` });
-      else { patch({ msg: "" }); eatAt(lat, lon, GPS_EAT_RADIUS_M); }
+      else if (!near && counters.current.added === 0) patch({ msg: `You're outside the demo area (${data.name}). Try Simulate walk.` });
+      else { patch({ msg: "" }); eatAt(lat, lon, GPS_EAT_RADIUS_M, true); }
       map.panTo([lat, lon], { animate: false });
-      L_.layer!.redraw(); refreshHud({ session: hudRef.current.session, mode: "gps" });
+      L_.layer!.redraw(); refreshHud({ mode: "gps" });
     }, (e) => patch({ msg: `GPS error: ${e.message}`, mode: "idle" }), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     refreshHud({ mode: "gps" });
   };
@@ -218,6 +271,9 @@ function DotsApp({ data }: { data: DemoFile }) {
   useEffect(() => {
     const L_ = live.current;
     L_.f = buildField(data);
+    const room = new URLSearchParams(location.hash.split("?")[1] ?? "").get("room");
+    shareWalks.current = room === "test";
+    L_.cov = new Coverage(`${data.area}${room === "test" ? "-test" : ""}`);
     const map = L.map(mapEl.current!, {
       zoomControl: false, attributionControl: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false,
       minZoom: 14, maxZoom: 19, center: [data.center[1], data.center[0]], zoom: 17,
@@ -225,11 +281,14 @@ function DotsApp({ data }: { data: DemoFile }) {
     map.attributionControl.setPrefix(false);
     L.control.zoom({ position: "topright" }).addTo(map);
     L_.map = map;
-    L_.layer = new DotLayer(L_.f, L_.prog, () => L_.avatar).addTo(map) as DotLayer;
+    L_.layer = new DotLayer(L_.f, L_.cov, () => L_.avatar).addTo(map) as DotLayer;
     setTiles(true);
     const beat = setInterval(() => { if (L_.mode === "idle") L_.layer?.redraw(); }, 400); // pellets pulse
-    patch({ total: L_.f.n, eaten: countEaten(), days: L_.prog.offsetDays });
-    return () => { clearInterval(beat); stop(); map.remove(); };
+    patch({ total: L_.f.n });
+    setTimeout(() => map.invalidateSize(), 0);
+    refreshHud();
+    L_.cov.start(() => { L_.layer?.redraw(); refreshHud(); });
+    return () => { clearInterval(beat); stop(); L_.cov?.stop(); map.remove(); };
   }, []);
 
   const setTiles = (on: boolean) => {
@@ -241,23 +300,42 @@ function DotsApp({ data }: { data: DemoFile }) {
   };
   const toggleTiles = () => setTiles(!live.current.tiles);
 
-  const pct = hud.total ? Math.round((100 * hud.eaten) / hud.total) : 0;
+  const room = new URLSearchParams(location.hash.split("?")[1] ?? "").get("room");
   return (
-    <div class="dots-root">
-      <div ref={mapEl} style="position:absolute;inset:0" />
-      <div class="dots-hud">
-        <h1>dots · concept · {data.name}</h1>
-        <div class="big">{hud.eaten.toLocaleString()} <span class="sub">of {hud.total.toLocaleString()} dots · {pct}%</span></div>
-        <div class="sub">+{hud.session} this walk · a dot every {DOT_SPACING_M} m · regrows after {DECAY_DAYS} days{hud.days ? ` · clock +${hud.days}d` : ""}</div>
+    <div class={`dots-root${hud.expanded ? " expanded" : ""}`}>
+      <div class="cam">
+        <video ref={videoEl} playsInline muted autoPlay />
+        {hud.cam !== "on" && (
+          <div class="cam-off">
+            <div class="cam-title">Camera view</div>
+            <p>{hud.camMsg || "The road ahead shows here while you walk, so you can keep your eyes up even when you check the phone."}</p>
+            <button onClick={() => void startCamera()}>Start camera</button>
+          </div>
+        )}
+        <div class="cam-badges">
+          {hud.mode === "sim" && <span class="badge warn">Simulated walk: camera shows where you really are</span>}
+          {hud.mode === "gps" && <span class="badge">Walking · GPS on</span>}
+          <span class="badge">{hud.sync === "ok" ? "Shared with other walkers" : hud.sync === "error" ? "Offline: saved on this phone" : "Connecting…"}</span>
+          {room === "test" && <span class="badge">{data.name} · test room</span>}
+        </div>
+        {hud.msg && <div class="cam-msg">{hud.msg}</div>}
       </div>
-      {hud.msg && <div class="dots-msg">{hud.msg}</div>}
-      <div class="dots-bar">
-        <button class={hud.mode === "sim" ? "on" : ""} onClick={() => (hud.mode === "sim" ? stop() : startSim())}>{hud.mode === "sim" ? "Stop walk" : "Simulate walk"}</button>
-        <button class={hud.mode === "gps" ? "on" : ""} onClick={() => (hud.mode === "gps" ? stop() : startGps())}>{hud.mode === "gps" ? "Stop GPS" : "Use my GPS"}</button>
-        <button onClick={() => { const s = hud.speed >= 24 ? 6 : hud.speed * 2; live.current.speed = s; patch({ speed: s }); }}>Speed ×{hud.speed}</button>
-        <button onClick={() => { live.current.prog.advance(30); live.current.layer?.redraw(); refreshHud(); }}>+30 days</button>
-        <button onClick={toggleTiles} class={hud.tiles ? "on" : ""}>Street map</button>
-        <button onClick={() => { stop(); live.current.prog.reset(); hudRef.current.session = 0; live.current.layer?.redraw(); refreshHud({ session: 0 }); }}>Reset</button>
+      <div class="mapwrap">
+        <div ref={mapEl} class="map" />
+        <div class="counter">
+          <div class="n">{hud.picked.toLocaleString()}<span> items picked up</span></div>
+          <div class="s">{hud.added ? `+${hud.added} this walk · ` : ""}all walkers {hud.covered.toLocaleString()}/{hud.total.toLocaleString()}{hud.days ? ` · clock +${hud.days}d` : ""}</div>
+          {hud.sync === "error" && <div class="s warn">Not shared right now; saved on this phone</div>}
+        </div>
+        <button class="expand" onClick={toggleExpanded}>{hud.expanded ? "Shrink map" : "Expand map"}</button>
+        <div class="strip">
+          <button class={hud.mode === "gps" ? "on" : ""} onClick={() => (hud.mode === "gps" ? stop() : startGps())}>{hud.mode === "gps" ? "Stop walk" : "Start walk (GPS)"}</button>
+          <button class={hud.mode === "sim" ? "on" : ""} onClick={() => (hud.mode === "sim" ? stop() : startSim())}>{hud.mode === "sim" ? "Stop sim" : "Simulate"}</button>
+          <button onClick={() => { const s = hud.speed >= 24 ? 6 : hud.speed * 2; live.current.speed = s; patch({ speed: s }); }}>Speed ×{hud.speed}</button>
+          <button onClick={() => { live.current.cov!.advance(10); live.current.layer?.redraw(); refreshHud(); }}>+10 days</button>
+          <button onClick={toggleTiles} class={hud.tiles ? "on" : ""}>Street map</button>
+          <button onClick={() => { stop(); live.current.cov!.forgetMine(); counters.current = { added: 0, refreshed: 0 }; live.current.layer?.redraw(); refreshHud(); }}>Forget mine</button>
+        </div>
       </div>
     </div>
   );

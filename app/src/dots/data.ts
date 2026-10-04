@@ -2,7 +2,7 @@
 export const DOT_SPACING_M = 10;
 const CELL_M = 40;
 
-export interface DemoFile { name: string; center: [number, number]; units: { id: string; k: "k" | "s"; c: [number, number][] }[] }
+export interface DemoFile { name: string; area: string; center: [number, number]; units: { id: string; k: "k" | "s"; c: [number, number][] }[] }
 
 export interface DotField {
   lon0: number; lat0: number; kx: number; ky: number;
