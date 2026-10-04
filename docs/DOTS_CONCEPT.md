@@ -4,7 +4,7 @@ Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default de
 
 ## What you see
 - **Top two thirds: the live camera**, so you can look at the road ahead while checking the phone. The map is the bottom third; **Expand map** gives it the whole screen and shrinks the camera to a corner window. The map is never expanded by default.
-- **Litter items instead of dots.** Every 10 m along a footpath sits a small, low-fidelity item drawn in code with an Indian flavour: toffee wrapper, water bottle, chai kulhad, snack packet, tender coconut, banana peel, plastic bag, masala sachet, cigarette butt, drink can, leaf plate. Garbage heaps stand in for hotspots. Walking a stretch **picks the items up**; they turn into small green markers (darker green = picked up more recently).
+- **Litter items instead of dots.** Every 10 m along a footpath sits a small item: toffee wrapper, water bottle, chai cup, snack packet, tender coconut, banana peel or plastic bag. They are flat, muted shapes drawn in code (Indian context, no brand logos) with a thin white edge so they stay readable on any map. Garbage heaps, drawn as a pile of tied black bags with a few things spilled in front, stand in for hotspots. Walking a stretch **picks the items up**; they turn into small green markers (darker green = picked up more recently).
 - **Counter (bottom): items picked up** by you in the last 30 days, plus this walk and everyone's total.
 - **Shared between walkers.** What anyone picked up in the last 30 days shows green for everyone; after 30 days it becomes litter again. Your walks are saved on the phone straight away and uploaded when online.
 - A walking-person silhouette marks you on the map. Only the dot-eating idea is borrowed from Pac-Man, not its look.
