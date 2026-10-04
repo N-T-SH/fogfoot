@@ -15,16 +15,19 @@ export function bearingDeg(a: { lat: number; lon: number }, b: { lat: number; lo
   return (Math.atan2(y, x) / rad + 360) % 360;
 }
 
-export interface GateResult { sharpness: number; luma: number; ok: boolean; reason?: "blurry" | "dark" }
+export interface GateResult { sharpness: number; luma: number; ok: boolean; reason?: "blurry" | "dark"; drawMs: number; readMs: number; computeMs: number }
 export interface GateCfg { minSharpness: number; minLuma: number }
 
 /** Laplacian variance + mean luma on a small grayscale copy. No ML. */
 export function qualityGate(src: CanvasImageSource, cfg: GateCfg, scratch: HTMLCanvasElement): GateResult {
   const W = 160, H = 90;
+  const t0 = performance.now();
   scratch.width = W; scratch.height = H;
   const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
   ctx.drawImage(src, 0, 0, W, H);
+  const t1 = performance.now();
   const px = ctx.getImageData(0, 0, W, H).data;
+  const t2 = performance.now();
   const g = new Float32Array(W * H);
   let sum = 0;
   for (let i = 0, j = 0; i < px.length; i += 4, j++) {
@@ -39,9 +42,11 @@ export function qualityGate(src: CanvasImageSource, cfg: GateCfg, scratch: HTMLC
     s += l; s2 += l * l; n++;
   }
   const sharpness = s2 / n - (s / n) ** 2;
-  if (luma < cfg.minLuma) return { sharpness, luma, ok: false, reason: "dark" };
-  if (sharpness < cfg.minSharpness) return { sharpness, luma, ok: false, reason: "blurry" };
-  return { sharpness, luma, ok: true };
+  const t3 = performance.now();
+  const timing = { drawMs: t1 - t0, readMs: t2 - t1, computeMs: t3 - t2 };
+  if (luma < cfg.minLuma) return { sharpness, luma, ok: false, reason: "dark", ...timing };
+  if (sharpness < cfg.minSharpness) return { sharpness, luma, ok: false, reason: "blurry", ...timing };
+  return { sharpness, luma, ok: true, ...timing };
 }
 
 export async function envReport(): Promise<Record<string, string>> {
@@ -63,5 +68,35 @@ export async function envReport(): Promise<Record<string, string>> {
   }
   if (nav.storage?.persisted) out["Storage persisted"] = String(await nav.storage.persisted());
   if (nav.getBattery) { const b = await nav.getBattery(); out["Battery at load"] = `${Math.round(b.level * 100)}%${b.charging ? " (charging)" : ""}`; }
+  return out;
+}
+
+/**
+ * Compass heading (deg clockwise from north) of the direction the BACK camera faces,
+ * from absolute DeviceOrientation angles (W3C Z-X'-Y'' convention). Unlike `360 - alpha`,
+ * this stays correct when the phone is held upright, which is how it is held while walking.
+ */
+export function cameraHeadingDeg(alphaDeg: number, betaDeg: number, gammaDeg: number): number | null {
+  const r = Math.PI / 180, a = alphaDeg * r, b = betaDeg * r, g = gammaDeg * r;
+  const zx = Math.cos(a) * Math.sin(g) + Math.sin(a) * Math.sin(b) * Math.cos(g);
+  const zy = Math.sin(a) * Math.sin(g) - Math.cos(a) * Math.sin(b) * Math.cos(g);
+  if (Math.hypot(zx, zy) < 0.2) return null; // camera pointing at sky/ground: heading undefined
+  return (Math.atan2(-zx, -zy) / r + 360) % 360;
+}
+
+/** Smallest absolute angle between two compass bearings, 0-180. */
+export function angleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/** Config overrides from the URL, e.g. ?q=0.5&w=800&every=10&sharp=40, so settings can be tuned without redeploying. */
+export function cfgFromUrl<T extends Record<string, number>>(base: T, map: Record<string, keyof T>): T {
+  const out = { ...base };
+  const sp = new URLSearchParams(location.search);
+  for (const [k, field] of Object.entries(map)) {
+    const v = Number(sp.get(k));
+    if (sp.has(k) && Number.isFinite(v) && v > 0) (out as Record<string, number>)[field as string] = v;
+  }
   return out;
 }
