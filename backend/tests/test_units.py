@@ -187,3 +187,59 @@ def test_gap_is_measured_not_assumed_lane_gaps_between_threshold_and_wide():
     assert g[1] == pytest.approx(7.5, abs=0.2)
     ru, bu = [d.to_crs(CFG.units.projected_crs) for d in _lane_with_buildings(gap=8.6)]
     assert shared_street_gaps(ru, bu, CFG.units.shared_streets) == {}   # just over max_gap_m=8.0
+
+
+# ---- Overpass retry behaviour -------------------------------------------------------------------
+
+class _Resp:
+    def __init__(self, code, body=None, text=""):
+        self.status_code, self._body, self.text = code, body, text
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no json")
+        return self._body
+
+
+def _run_post(monkeypatch, responses):
+    import fogfoot.network.osm as osm
+    calls = []
+    it = iter(responses)
+
+    def fake_post(url, **kw):
+        calls.append(url)
+        r = next(it)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(osm.requests, "post", fake_post)
+    waits = []
+    return osm, calls, waits
+
+
+def test_overpass_rotates_endpoints_and_reports_statuses(monkeypatch):
+    osm, calls, waits = _run_post(monkeypatch, [_Resp(429), _Resp(504), _Resp(200, {"elements": [1]})])
+    out = osm._post_overpass(CFG, "q", sleep=waits.append)
+    assert out == {"elements": [1]}
+    assert calls == CFG.osm.overpass_urls[:3]            # rotated across the three endpoints
+    assert waits == CFG.osm.retry_waits_s[:2]            # backed off between attempts
+
+
+def test_overpass_error_names_the_status_codes(monkeypatch):
+    osm, _, waits = _run_post(monkeypatch, [_Resp(429)] * 10)
+    with pytest.raises(RuntimeError) as e:
+        osm._post_overpass(CFG, "q", sleep=waits.append)
+    assert "HTTP 429" in str(e.value) and "None" not in str(e.value)
+
+
+def test_overpass_does_not_retry_a_bad_query(monkeypatch):
+    osm, calls, waits = _run_post(monkeypatch, [_Resp(400), _Resp(200, {})])
+    with pytest.raises(RuntimeError, match="HTTP 400"):
+        osm._post_overpass(CFG, "q", sleep=waits.append)
+    assert len(calls) == 1
+
+
+def test_overpass_html_error_page_with_200_is_retried(monkeypatch):
+    osm, _, waits = _run_post(monkeypatch, [_Resp(200, None, "<html>runtime error</html>"), _Resp(200, {"elements": []})])
+    assert osm._post_overpass(CFG, "q", sleep=waits.append) == {"elements": []}

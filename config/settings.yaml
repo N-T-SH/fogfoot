@@ -8,7 +8,11 @@ pilot:
   bbox_buffer_m: 200
 
 osm:
-  overpass_url: https://overpass-api.de/api/interpreter
+  overpass_urls:                  # tried in order; rotates on rate limits, timeouts and errors
+    - https://overpass-api.de/api/interpreter
+    - https://overpass.private.coffee/api/interpreter
+    - https://overpass.kumi.systems/api/interpreter
+  retry_waits_s: [15, 30, 60, 90, 120]
   user_agent: "fogfoot/0.1 (civic footpath mapping; https://github.com/N-T-SH/fogfoot)"
   cache_dir: data/osm
   timeout_s: 180

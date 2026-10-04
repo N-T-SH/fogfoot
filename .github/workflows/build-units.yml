@@ -33,8 +33,14 @@ jobs:
       - run: pip install -e "backend[dev]"
       - name: Unit tests
         run: pytest backend -q
+      - name: Restore cached OSM downloads
+        uses: actions/cache@v4
+        with:
+          path: data/osm
+          key: osm-${{ hashFiles('config/settings.yaml') }}
       - name: Build kerb units
-        run: fogfoot build-units --pilot ${{ inputs.force && '--force' || '' }} | tee build-units.log
+        shell: bash   # bash with pipefail, so a failure of fogfoot is not hidden by `tee`
+        run: fogfoot build-units --pilot ${{ inputs.force && '--force' || '' }} 2>&1 | tee build-units.log
       - name: Publish to data branch
         run: |
           mkdir -p /tmp/out/osm

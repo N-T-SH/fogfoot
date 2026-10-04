@@ -18,7 +18,13 @@ class PilotCfg(BaseModel):
 
 
 class OsmCfg(BaseModel):
-    overpass_url: str = "https://overpass-api.de/api/interpreter"
+    # Tried in order, rotating on rate limits / timeouts / errors.
+    overpass_urls: list[str] = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    ]
+    retry_waits_s: list[int] = [15, 30, 60, 90, 120]
     user_agent: str = "fogfoot/0.1"
     cache_dir: str = "data/osm"
     timeout_s: int = 180

@@ -25,21 +25,32 @@ def _query(bbox: BBox, highways: list[str], timeout: int) -> str:
     )
 
 
-def _post_overpass(cfg: Settings, q: str) -> dict:
-    last: Exception | None = None
-    for attempt in range(4):
+def _post_overpass(cfg: Settings, q: str, sleep=time.sleep) -> dict:
+    """POST an Overpass query, rotating across endpoints and backing off on 429/5xx/timeouts."""
+    urls = cfg.osm.overpass_urls
+    problems: list[str] = []
+    for attempt, wait in enumerate([0, *cfg.osm.retry_waits_s]):
+        url = urls[attempt % len(urls)]
+        if wait:
+            sleep(wait)
         try:
             r = requests.post(
-                cfg.osm.overpass_url, data={"data": q}, timeout=cfg.osm.timeout_s + 30,
+                url, data={"data": q}, timeout=cfg.osm.timeout_s + 30,
                 headers={"User-Agent": cfg.osm.user_agent, "Accept": "application/json"},
             )
-            if r.status_code in (429, 504):
-                time.sleep(5 * (attempt + 1)); continue
-            r.raise_for_status()
-            return r.json()
-        except requests.RequestException as ex:  # noqa: PERF203
-            last = ex; time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"Overpass failed: {last}")
+        except requests.RequestException as ex:
+            problems.append(f"{url}: {type(ex).__name__}")
+            continue
+        if r.status_code == 200:
+            try:
+                return r.json()
+            except ValueError:  # Overpass sometimes answers 200 with an HTML/XML error page
+                problems.append(f"{url}: 200 but not JSON ({r.text[:80]!r})")
+                continue
+        problems.append(f"{url}: HTTP {r.status_code}")
+        if r.status_code not in (429, 500, 502, 503, 504):
+            break  # a 4xx like 400 means our query is wrong; retrying will not help
+    raise RuntimeError("Overpass failed after retries: " + "; ".join(problems))
 
 
 def fetch_osm(cfg: Settings, bbox: BBox, force: bool = False) -> dict:
