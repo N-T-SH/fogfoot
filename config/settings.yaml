@@ -2,9 +2,10 @@ pilot:
   name: tech-hub-cluster
   ward_kml_url: https://data.opencity.in/dataset/863209cb-4ced-4f51-b5c5-156939c50922/resource/9013d656-8051-4e2d-9648-46efd0d86d3d/download/gba-369-wards-december-2025.kml
   # Matched against the KML `ward_name` column (case-insensitive substring). The 2025 delimitation spells
-  # Koramangala "Kormangala", and HSR sector 2 lies in "Agara", so patterns are listed by actual ward names.
+  # Koramangala "Kormangala", HSR sector 2 lies in "Agara", and Domlur is "Domluru" (Domlur 2nd Stage and
+  # Amarjyoti fall in the neighbouring "Kodihalli"), so patterns are listed by actual ward names.
   # Note `ward_id` repeats across corporations; wards are keyed on the KML `id2` instead.
-  ward_name_patterns: ["Indiranagar", "Kormangala", "HSR Layout", "Agara"]
+  ward_name_patterns: ["Indiranagar", "Kormangala", "HSR Layout", "Agara", "Domluru", "Kodihalli"]
   bbox_buffer_m: 200
 
 osm:
