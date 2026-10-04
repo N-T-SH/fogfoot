@@ -12,7 +12,7 @@ This plan is written for Claude Code. Work phase by phase. Each phase has accept
 
 ### 0.1 Target device profile ("reference low-end phone")
 
-Design, test and budget against this, not against a developer flagship. Bengaluru's mass-market Android base is dominated by budget phones.
+Design, test and budget against this, not against a developer flagship. Bengaluru's mass-market Android base is dominated by budget phones. **iOS is supported from day one** (see §0.1b); Android low-end sets the performance floor, iOS sets the API-compatibility floor.
 
 | Attribute | Assumption |
 |---|---|
@@ -25,24 +25,37 @@ Design, test and budget against this, not against a developer flagship. Bengalur
 | Sensors | Often **no gyroscope or magnetometer**, and a single-band GPS with 10–30 m error between buildings. |
 | Network | Patchy 4G, prepaid daily data caps (1–1.5 GB/day), many users on Wi-Fi only at home/office. Plan for Slow-4G and offline. |
 | Battery | 4,000–5,000 mAh, aged; OEMs (Xiaomi, Realme, Vivo, Oppo) kill background apps aggressively. |
-| Reference test handsets | Buy/borrow 3: a 2 GB Android Go phone (e.g. Redmi A-series / Galaxy A0x), a 3–4 GB Realme C / Redmi 12C class, and one mid-range for comparison. |
+| Reference test handsets | Buy/borrow 3 Android: a 2 GB Android Go phone (e.g. Redmi A-series / Galaxy A0x), a 3–4 GB Realme C / Redmi 12C class, and one mid-range. Plus 2 iPhones (§0.1b). |
+
+### 0.1b iOS support (from day one)
+
+Minimum **iOS 16.4** (first version with Web Push for installed PWAs, Screen Wake Lock in standalone, OffscreenCanvas); older iOS gets map/Verify/Ward but Capture shows an "update iOS" message. Reference devices: one older iPhone (SE 2 / 8 / 11 class, 2–3 GB RAM) and one current iPhone. iOS constraints designed in from the start:
+
+- **Install.** No `beforeinstallprompt`; show a short in-app "Add to Home Screen" guide (en/kn/hi) with Share-sheet screenshots. Capture works in-browser, but storage is more fragile there (see below), so nudge install.
+- **Storage eviction.** Safari can evict script-writable storage (IndexedDB) after ~7 days of non-use for non-installed sites. Treat the local frame queue as short-lived: warn when queue is older than 3 days, upload on first online app open, never promise offline retention beyond a week.
+- **No Background Sync.** Upload on app open, on `visibilitychange`, and on `online` events; resumable so partial uploads are not wasted.
+- **Sensors.** `DeviceOrientationEvent.requestPermission()` must be called from a user gesture (put it behind the "Start walk" button). GPS and camera stop when the screen locks or the app backgrounds, so capture is foreground-only with wake lock; handle lock/unlock gracefully and resume.
+- **Camera.** Permission may be re-requested per launch in some versions; keep one `MediaStream` alive per walk and handle `track.onended`. Use `playsinline muted` on the preview video.
+- **Layout.** Safe-area insets, no reliance on `100vh`, tap targets ≥ 48 px.
+- **Google Sign-In** popups are unreliable in standalone PWAs: use the redirect flow and verify it works installed on iOS (part of Spike A).
+- **Testing.** WebKit in Playwright CI, plus the two physical iPhones for every release.
 
 ### 0.2 In scope for MVP
 
-- PWA with Map (compliance + fog toggle), Capture, Ward, Verify, Fixed, basic Hotspots. Installable; Play Store listing via a Trusted Web Activity (TWA) wrapper of the same PWA.
-- Server-side blur, Mapillary push, matching, scoring (baseline open model, no fine-tuning yet), compliance assessment.
+- PWA with Map (compliance + fog toggle), Capture, Ward, Verify, Fixed, basic Hotspots. Installable on Android and iOS. **Web only for launch**; a Play Store listing (TWA) is post-MVP.
+- Nightly batch pipeline: match, Mapillary push, scoring (small open model under a hard budget, no fine-tuning yet), compliance assessment, tile and snapshot build. Light compute by design, see §3.2.
 - Exports: GeoJSON and per-segment evidence pack.
 - Languages: English, Kannada, Hindi (UI strings externalised from day one).
-- Anonymous-first accounts: device-bound ID plus chosen handle; optional phone/Google sign-in to keep progress across devices.
+- **Google Sign-In only** (no passwords, no SMS). Browsing the map, wards and fixed list needs no account; Capture, Verify, hotspots and points need sign-in. We store a hashed Google subject ID and a chosen handle, not the email address.
 - Public-release basics: DPDP consent flow, privacy policy, report/takedown for any frame, rate limits, abuse controls, a cost ceiling on scoring.
 
 ### 0.3 Deferred to post-MVP
 
-Raids, collections/badges beyond a simple streak, partner rewards, KML and OSM exports, LoRA fine-tuning loop (Phase 4 — still **collect and store** Verify labels now), Capacitor/iOS native wrapper (iOS stays web-only unless Spike A shows it is viable), voice notes, PostGIS migration, Mapillary pull (unless Spike shows it is needed to cold-start coverage).
+Raids, collections/badges beyond a simple streak, partner rewards, KML and OSM exports, LoRA fine-tuning loop (Phase 4 — still **collect and store** Verify labels now), Play Store / TWA listing, Capacitor wrapper (only enters scope if iOS capture fails Spike A), voice notes, PostGIS migration, Mapillary pull (unless Spike shows it is needed to cold-start coverage).
 
 ### 0.4 Low-end performance budgets (hard release gates)
 
-Enforced in CI with Lighthouse CI and Playwright (CPU 4× throttle, Slow-4G profile) on every PR.
+Enforced in CI with Lighthouse CI and Playwright (Chromium with 4× CPU throttle and Slow-4G; WebKit for functional parity) on every PR.
 
 | Budget | Limit |
 |---|---|
@@ -54,8 +67,8 @@ Enforced in CI with Lighthouse CI and Playwright (CPU 4× throttle, Slow-4G prof
 | Capture loop main-thread cost per sampled frame | ≤ 30 ms; UI never janks |
 | Memory, Capture screen, 30 min walk | ≤ 200 MB, no growth trend |
 | Battery, 30 min capture | ≤ 12% on reference phone (measure in Spike A) |
-| Data per 2 km walk upload | ≤ 25 MB, uploaded on Wi-Fi by default |
-| Install size (TWA) | ≤ 3 MB |
+| Data per 2 km walk upload | ≤ 15 MB, uploaded on Wi-Fi by default |
+| Installed PWA storage (shell + cached tiles for home ward) | ≤ 25 MB |
 
 ---
 
@@ -98,30 +111,46 @@ No cash payouts, paid verification, paid rider fleets, employer challenges or CS
 | Layer | Choice | Notes |
 |---|---|---|
 | App | Vite + **Preact** (via `preact/compat` if needed) + TypeScript PWA (`vite-plugin-pwa` / Workbox) | One codebase for desktop and mobile. Preact (~4 KB) rather than React (~45 KB) to meet the JS budget on low-end phones. Route-level code splitting. |
-| Maps | **Leaflet** with Canvas renderer, raster basemap tiles (OSM-compatible provider / self-hosted PMTiles on a CDN), our units served as simplified **vector tiles** (PMTiles, static, pre-built nightly) | Replaces Google Maps JS + WebGL: far lighter, no WebGL dependency, no per-load Maps billing at public scale. Google is used only to link out to Street View for human verification. **Decision to confirm, see §10.** |
+| Maps | **Leaflet** with Canvas renderer, raster basemap tiles (OSM-compatible provider / self-hosted PMTiles on a CDN), our units served as simplified **vector tiles** (PMTiles, static, pre-built nightly) | Replaces Google Maps JS + WebGL: far lighter, no WebGL dependency, no per-load Maps billing at public scale. Google is used only to link out to Street View for human verification. *Confirmed.* |
 | Capture | `getUserMedia` (rear camera, 720p), Geolocation `watchPosition`, `DeviceOrientationEvent` (optional; falls back to GPS course), Screen Wake Lock API, `OffscreenCanvas`/`createImageBitmap` in a Web Worker for JPEG encode | Foreground only; see Spike A |
-| Offline queue | IndexedDB (`idb`), `navigator.storage.persist()`, quota-aware | Resumable chunked upload; Wi-Fi-only by default; Background Sync (Android Chrome) where available, otherwise upload when app open |
-| Android distribution | TWA (Bubblewrap) wrapping the PWA for the Play Store | Small install, auto-updates with the web app |
-| Native fallback | Capacitor wrapper around the same PWA | Post-MVP, only if Spike A fails on iOS |
-| Backend | Python 3.11, FastAPI, Pydantic v2, Typer CLI | |
-| Storage (MVP) | SQLite (WAL) + SpatiaLite; frames in S3-compatible bucket; map tiles as static PMTiles on a CDN | PostGIS migration path post-MVP |
+| Offline queue | IndexedDB (`idb`), `navigator.storage.persist()`, quota-aware | Resumable chunked upload straight to object storage; Wi-Fi-only by default; Background Sync on Android Chrome, upload-on-open on iOS |
+| Auth | Google Identity Services, redirect flow, ID token verified at the edge | No password or SMS infrastructure |
+| Native fallback | Capacitor wrapper around the same PWA | Only if iOS fails Spike A; Play Store TWA post-MVP |
+| Edge API | Cloudflare Workers (TypeScript) + D1 + R2, free tier | Upload presigning, auth, votes, check-ins, provisional points. No always-on server. See §3.2. |
+| Batch pipeline | Python 3.11, Pydantic v2, Typer CLI, run nightly on GitHub Actions (public repo) or one free-tier VM | CPU only except the scoring step |
+| Storage | Batch DB: SQLite + SpatiaLite (source of truth). Interactive state in D1. Frames in R2 with short TTL. Tiles and snapshots as static files on the CDN | |
 | Geo | osmnx, shapely 2, pyproj, geopandas, rtree | |
 | Public imagery | Mapillary (upload via `mapillary_tools`; read via API v4) | Open licence; verify current terms |
-| Privacy | Server-side face/plate blur before any storage or upload (candidate: EgoBlur; verify licence) | |
-| Scoring model | Open-weights vision-language model, served with vLLM | See §3.1. **All heavy work (blur, scoring, tiles) is server-side; no on-device ML in MVP.** |
+| Privacy | Mapillary blurs faces and plates before publication; we host no public imagery. Our private frame copies are short-lived. CPU blur fallback (small ONNX detector) in batch if Spike C shows Mapillary's blur is insufficient. | See §3.2 and Spike C |
+| Scoring model | Small open-weights vision-language model under a hard budget | See §3.1. No on-device ML in MVP (low-end phones); cheap non-ML checks run on device. |
 | Fine-tuning | Hugging Face TRL + PEFT (LoRA / QLoRA) | Post-MVP; collect labels now |
 | Config | YAML in `config/`, loaded via Pydantic settings | |
 
 ### 3.1 Scoring model
 
-- **Baseline candidates** (choose the latest open-weights releases at build time): Qwen-VL family (7B-class), Gemma 3 multimodal, InternVL, Llama 3.2 Vision, Molmo. Run a bake-off in Phase 3 on cost per 1,000 frames and accuracy on the calibration set.
-- **Serving.** vLLM on a single GPU, or a hosted open-weights endpoint. Scoring is a nightly batch job, so latency is not a constraint.
+- **Baseline candidates** (choose the latest open-weights releases at build time, small sizes first): Qwen-VL family, Gemma 3 multimodal, InternVL, Llama 3.2 Vision, Molmo. Run a bake-off in Phase 3 on cost per 1,000 frames and accuracy on the calibration set.
+- **Serving.** Nightly batch, so latency is irrelevant. Prefer the cheapest option that meets calibration accuracy, in this order: (1) quantised ≤4B model on CPU (llama.cpp or similar) in the batch job; (2) free or donated GPU credits (cloud non-profit programmes, university or research grants) with vLLM; (3) a hosted open-weights endpoint at pay-per-token, only under the budget cap below. The bake-off must include small quantised models, not just 7B-class.
+- **Hard budget.** `scoring:` in `models.yaml` caps frames per unit, rescoring frequency and monthly frame total. Over budget, units stay "awaiting assessment" rather than getting a poor or no score; never silently skip evidence.
 - **Fine-tuning.** LoRA on India-specific data:
   - Verify-tab consensus labels (grows with usage).
   - Hand-labelled calibration set (Phase 3).
   - Sensing Local audit points and photos, **only with written permission**.
   - India Driving Dataset (IDD) for sidewalk/curb pretraining signal; verify licence.
 - **Provider interface stays model-agnostic**, so a larger model can be swapped in for audits or label bootstrapping.
+
+### 3.2 Free, non-commercial operating model: minimise server compute
+
+fogfoot is a free public-interest service, so the design pushes work to the places where it is free: the user's device (only for cheap, non-ML work), the CDN (static files), the crowd (Verify) and a nightly CPU batch. Principles:
+
+1. **Static first.** Kerb units, compliance status, fog, ward standings, hotspots and leaderboards are pre-built nightly (hourly for hotspots/leaderboards if cheap) as PMTiles and small JSON snapshots on the CDN. Reading the map costs no compute.
+2. **Thin edge, no always-on server.** Workers + D1 + R2 on free tiers handle only writes: sign-in token check, presigned uploads, Verify votes, hotspot check-ins, provisional points. Python never serves requests.
+3. **Nightly CPU batch.** Match, assess, decay, hotspots, tiles, points finalisation, Mapillary push. Idempotent and resumable; one run fits GitHub Actions limits or a single free VM.
+4. **Cheap on-device gating (no ML).** Before upload the phone drops frames that are blurry (Laplacian variance), too dark (mean luma), duplicate (pHash), or fail GPS sanity (speed, jump, accuracy). Sampling is every 10 m, giving ~200 frames per 2 km walk. This cuts upload data and downstream compute together.
+5. **Spend model compute only where it matters.** Score at most 3 best frames per unit (chosen by sharpness and GPS accuracy), only units with new frames, and only re-score when ≥ 2 new frames arrive. Everything else reuses the previous assessment until fog regrows.
+6. **Crowd before compute.** Verify consensus settles clear-cut frames and feeds calibration, so the VLM is a triage tool, not the only judge.
+7. **Bounded storage.** Frames in R2 are deleted after scoring plus a short TTL (`frame_retention_days`, default 7). Public imagery lives on Mapillary; evidence packs link to Mapillary image IDs and keep only scores, crops metadata and IDs on our side.
+8. **Anti-cheat in two tiers.** Light checks on device and at the edge; the authoritative checks run in the nightly batch before points go from provisional to final. No cash is involved, so there is no need for real-time fraud screening.
+9. **Cost watch.** Track monthly cost and compute minutes; the budget cap in §3.1 and Cloudflare/GitHub free-tier limits are release-gate alarms.
 
 ---
 
@@ -152,8 +181,8 @@ fogfoot/
 │   │   │   ├── wards.py
 │   │   │   └── units.py       # OSM roads -> 100 m kerb units per side
 │   │   ├── ingest/
-│   │   │   ├── captures.py    # receive PWA uploads
-│   │   │   ├── blur.py
+│   │   │   ├── captures.py    # list new uploads in R2, download for the batch
+│   │   │   ├── blur.py        # CPU fallback only, if Mapillary blur proves insufficient
 │   │   │   ├── mapillary_push.py
 │   │   │   └── mapillary_pull.py
 │   │   ├── match/
@@ -189,14 +218,15 @@ fogfoot/
 │   │   │   └── evidence.py
 │   │   ├── calibrate/
 │   │   │   └── harness.py
-│   │   └── api/
-│   │       ├── main.py
-│   │       ├── routes_units.py
-│   │       ├── routes_captures.py
-│   │       ├── routes_game.py
-│   │       ├── routes_hotspots.py
-│   │       └── routes_verify.py
+│   │   └── snapshots/
+│   │       └── publish.py     # nightly JSON snapshots (wards, hotspots, leaderboards) to CDN
 │   └── tests/
+├── edge/                      # Cloudflare Workers (TypeScript): the only write API
+│   ├── src/auth.ts            # verify Google ID token
+│   ├── src/upload.ts          # presigned R2 upload, size and rate limits
+│   ├── src/verify.ts          # votes
+│   ├── src/checkin.ts         # hotspot check-ins, provisional points
+│   └── migrations/            # D1 schema
 ├── app/                       # PWA
 │   ├── vite.config.ts
 │   └── src/
@@ -213,6 +243,7 @@ fogfoot/
 │       │   ├── sampler.ts     # distance-based sampling
 │       │   ├── heading.ts     # DeviceOrientation; falls back to GPS course when no magnetometer
 │       │   ├── encode.worker.ts  # JPEG encode off the main thread
+│       │   ├── gate.ts        # on-device quality gate: blur, luma, pHash dedupe, GPS sanity
 │       │   ├── governor.ts    # adaptive sampling: backs off on slow frames, low battery, low storage
 │       │   ├── wakelock.ts
 │       │   └── flag.ts        # tap-anywhere issue flag + optional voice note
@@ -224,8 +255,7 @@ fogfoot/
 │       │   ├── FogLayer.ts
 │       │   └── HotspotLayer.ts
 │       └── api.ts
-├── twa/                       # Bubblewrap config for Play Store
-├── ci/                        # Lighthouse CI + Playwright throttled perf budgets
+├── ci/                        # Lighthouse CI + Playwright (Chromium throttled, WebKit parity)
 └── data/                      # gitignored
 ```
 
@@ -255,7 +285,11 @@ units:
   include_highway: [primary, secondary, tertiary, residential, unclassified, living_street]
 
 capture:
-  sample_every_m: 5               # governor may widen to 8-10 m on slow devices
+  sample_every_m: 10              # ~200 frames per 2 km; governor may widen to 15 m on slow devices
+  gate:
+    min_sharpness: 40             # Laplacian variance on a downscaled copy; tune in Spike A
+    min_mean_luma: 45
+    drop_phash_dups: true
   jpeg_quality: 0.6
   max_width_px: 960               # 720p camera stream; keeps ~60-80 KB/frame
   daylight_only_default: true
@@ -276,12 +310,13 @@ storage:
   sqlite_path: data/fogfoot.sqlite
   frames_dir: data/frames
   keep_raw_frames: false
+  frame_retention_days: 7         # private copies in R2; public imagery lives on Mapillary
 
 mapillary:
   push: true
   token_env: MAPILLARY_TOKEN
   organization_env: MAPILLARY_ORG_ID
-  push_after: blur            # never push unblurred frames
+  push_after: blur_check      # Mapillary blurs faces/plates; fall back to our CPU blur if Spike C fails
 
 maps:
   google_maps_key_env: GOOGLE_MAPS_API_KEY
@@ -418,8 +453,13 @@ baseline_candidates:
   - "qwen-vl (7B class, latest)"
   - "gemma-3 multimodal (latest small)"
   - "internvl (latest small)"
+scoring:
+  max_frames_per_unit: 3
+  min_new_frames_to_rescore: 2
+  monthly_frame_budget: 100000    # set from real cost in Phase 3; over budget -> 'awaiting assessment'
+  prefer: [cpu_quantised, donated_gpu, hosted_payg]
 serving:
-  engine: vllm
+  engine: llamacpp_or_vllm
   endpoint_env: FOGFOOT_VLM_ENDPOINT
   model_env: FOGFOOT_VLM_MODEL
 finetune:
@@ -469,7 +509,7 @@ CREATE TABLE unit_compliance (
   PRIMARY KEY (unit_id, computed_at)
 );
 
-CREATE TABLE users (user_id TEXT PRIMARY KEY, handle TEXT, team_id TEXT, home_ward TEXT, mapillary_user TEXT);
+CREATE TABLE users (user_id TEXT PRIMARY KEY, google_sub_hash TEXT UNIQUE, handle TEXT, team_id TEXT, home_ward TEXT, mapillary_user TEXT);
 CREATE TABLE teams (team_id TEXT PRIMARY KEY, name TEXT, kind TEXT, ward_id TEXT);
 
 CREATE TABLE points_ledger (
@@ -566,41 +606,45 @@ Also:
 - Write to Sensing Local about HSR Layout audit data (they audited HSR; overlap makes it the best calibration set).
 - Confirm Mapillary upload terms, licence and organisation account setup.
 
-**SPIKE A — PWA capture on low-end Android first.** Build a minimal capture page and test on the **reference low-end Android phones (§0.1)** before anything else, then on iOS Safari (installed to home screen) and a mid-range Android. Android low-end is the primary target; iOS is secondary:
+**SPIKE A — PWA capture on low-end Android and iOS, in parallel.** Build a minimal capture page and test on the **reference low-end Android phones (§0.1)** and the **two reference iPhones (§0.1b)**, installed to home screen and in-browser. Both platforms are release gates:
 - rear camera via `getUserMedia` in standalone mode,
 - `watchPosition` accuracy while walking,
 - `DeviceOrientationEvent` heading (iOS permission prompt),
 - Screen Wake Lock keeping the screen on with a black UI,
 - battery drain per 30 min,
 - IndexedDB storage of ~500 frames, and behaviour near the storage quota,
+- Google Sign-In (redirect flow) in installed standalone mode on iOS and Android,
+- upload-on-open behaviour without Background Sync (iOS) and with it (Android),
+- on-device quality gate: tune `gate:` thresholds so ≥ 90% of dropped frames are genuinely unusable and cost ≤ 15 ms per frame at 4× throttle,
 - main-thread jank, thermal throttling and memory growth over a 30 min walk with the encode worker on vs off,
 - whether DeviceOrientation exists at all, and how good GPS-course heading is when walking,
 - OEM background-kill behaviour (Xiaomi/Realme/Vivo battery savers) when the screen is on and the app is foreground,
 - data used per 2 km walk at 720p / q0.6 / 5 m vs 8 m sampling.
 Output: a go/no-go and the tuned defaults for `capture:` in `settings.yaml`.
 
-Capture is foreground only on both platforms. If iOS fails any of these, wrap the same app in Capacitor for iOS capture only.
+Capture is foreground only on both platforms. If iOS fails any of these, report before Phase 1: the options are a Capacitor wrapper for iOS capture only (added to MVP scope) or iOS launching as view/Verify only. Don't silently drop iOS capture.
 
 **SPIKE B — side resolution.** On 50 Mapillary frames from the pilot, compare GPS-only nearest kerb vs GPS + `side_hint`. Also repeat with real GPS traces from the low-end handsets (10–30 m error) and with `gps_course` heading instead of compass. Report accuracy for each.
 
 **SPIKE E — low-end map rendering.** Prototype the Leaflet + PMTiles map with ~3,000 units on the reference low-end phones. Confirm the performance budgets in §0.4 and decide whether Canvas rendering needs further simplification (zoom-dependent geometry, ward-level aggregate at low zoom).
 
-**SPIKE C — blur.** Run the candidate blur model on 50 frames; report face and plate recall by eye.
+**SPIKE C — privacy blur.** Upload 50 frames from the pilot to a test Mapillary account and check, by eye, face and plate recall of Mapillary's automatic blur at our 960 px / q0.6 resolution. If recall is not adequate, test a small CPU ONNX detector in the batch as the fallback. Also confirm Mapillary's current terms on automated blur and on uploads from an organisation account.
 
-**SPIKE D — model bake-off (small).** Score 100 hand-labelled frames with 2–3 baseline open-weights models; report accuracy per check and cost per 1,000 frames.
+**SPIKE D — model bake-off (small).** Score 100 hand-labelled frames with 2–3 baseline open-weights models, **including at least one ≤4B quantised CPU-runnable model**; report accuracy per check, seconds per frame on CPU, and cost per 1,000 frames. This sets the real `monthly_frame_budget`.
 
 ### Phase 1 — Kerb units and PWA shell
-- `fogfoot build-units --pilot`; PWA installable; Map view shows grey units over the basemap, served as PMTiles. i18n scaffolding (en/kn/hi). CI perf budgets wired up.
+- `fogfoot build-units --pilot`; PWA installable on Android and iOS; Map view shows grey units over the basemap, served as PMTiles from the CDN. i18n scaffolding (en/kn/hi). Google Sign-In and edge Worker skeleton. CI perf budgets and WebKit tests wired up.
 - **Accept:** units sit on correct kerbs for 20 spot-checked roads; PWA installs on iOS and Android; **§0.4 budgets pass on the reference low-end phone**.
 
 ### Phase 2 — Capture, ingest, Mapillary
 - Capture view: distance sampling with the adaptive governor, heading with GPS-course fallback, wake lock, tap-anywhere flag, IndexedDB queue with quota awareness, encode worker, resumable Wi-Fi-first uploader, large high-contrast UI readable in sun, simple "hold the phone at chest height, camera forward" onboarding in 3 languages.
-- Server: ingest → blur → store → push to Mapillary; also pull existing Mapillary frames for the pilot.
+- Phone: on-device gate, 10 m sampling, direct-to-R2 resumable upload via presigned URLs from the edge Worker.
+- Nightly batch: ingest → push to Mapillary (blur check per Spike C) → match → delete private copy after scoring/TTL. Mapillary pull is post-MVP.
 - `fogfoot match` assigns frames to units with `side_conf`.
 - **Accept:** a 2 km walk captured on a reference low-end phone appears as blurred frames on Mapillary and matched units within 1 hour of upload; ≥ 85% correct unit and side on a 100-frame labelled sample **including low-end-phone GPS traces**; upload survives airplane-mode toggling mid-walk without losing frames.
 
 ### Phase 3 — Scoring and compliance
-- `fogfoot score` (baseline model via vLLM); `fogfoot assess` produces `unit_compliance` with criteria failed and issue codes.
+- `fogfoot score` (baseline model under the `scoring:` budget, §3.1); `fogfoot assess` produces `unit_compliance` with criteria failed and issue codes.
 - Map toggles fog view and compliance view; unit panel lists issues, evidence frames, last seen, owner agency, judgment reference.
 - `fogfoot calibrate --truth <file>` on 300 hand-labelled units (plus Sensing Local HSR data if permitted).
 - **Accept:** published per-status precision/recall; every non-compliant unit lists at least one criterion failed and one issue code.
@@ -631,10 +675,10 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 ### Phase 8 — Public release hardening
 - DPDP Act review: consent (including Mapillary publication), retention, deletion on request; privacy policy and terms in en/kn/hi.
 - Abuse and moderation: report/takedown on any frame, rate limits per device and IP, upload size caps, spam/NSFW check on frames before publication.
-- Play Store: TWA build via Bubblewrap, Digital Asset Links, listing in en/kn/hi, Data Safety form, closed testing track then staged rollout.
-- Real-world low-end validation: 10+ testers on budget phones across at least 3 brands complete a 2 km walk and a Verify session; collect device class, crash and battery feedback. Fix before public rollout.
+- Web launch: custom domain, HTTPS, install guides for Android and iOS (en/kn/hi), soft launch with a small cohort before announcing. Play Store TWA is a post-MVP follow-up.
+- Real-world validation: 10+ testers on budget Android phones across at least 3 brands, plus at least 3 iPhone users, complete a 2 km walk and a Verify session; collect device class, crash and battery feedback. Fix before public rollout.
 - Lightweight, privacy-respecting error and perf telemetry (device class, encode ms, queue size, upload failures) with consent.
-- Cost ceiling: scoring spend alarm and a daily cap; nightly batch degrades gracefully (oldest-first) if exceeded.
+- Cost ceiling: scoring budget cap (§3.1), alarms before Cloudflare/GitHub free-tier limits, and graceful degradation (oldest-first, units shown as "awaiting assessment") if exceeded. Add a donations or grants note only if the user wants it; no ads and no data sales.
 - Metrics: weekly active walkers, units refreshed, coverage by ward, hotspot completion, verify throughput, scoring cost per 1,000 frames, capture success rate by device class.
 - PostGIS migration path (post-MVP).
 
@@ -642,8 +686,9 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 
 ## 9. Hard problems to keep visible
 
-0. **Low-end Android is the primary platform.** Weak GPS, no compass, 2 GB RAM, thermal throttling and OEM battery killers will decide whether capture works at all. Spike A and the §0.4 budgets are release gates, not nice-to-haves. Keep all heavy compute server-side.
-1. **iOS PWA capture** may be unreliable; Capacitor is the fallback (Spike A).
+0. **Low-end Android is the primary platform.** Weak GPS, no compass, 2 GB RAM, thermal throttling and OEM battery killers will decide whether capture works at all. Spike A and the §0.4 budgets are release gates, not nice-to-haves. Heavy compute must stay off the phone, but equally off our servers (§3.2).
+1. **iOS PWA capture** is a day-one requirement but Safari's limits (no Background Sync, storage eviction, foreground-only GPS/camera, popup auth) make it the riskiest platform; Capacitor for iOS is the fallback (Spike A).
+1a. **Free service, bounded budget.** Free tiers have hard limits and model scoring has real cost. The scoring budget cap and the static-first design are what keep the service alive; a spike in usage must degrade freshness, not take the site down.
 2. **Kerb side ambiguity** under urban GPS error (Spike B).
 3. **Legal framing.** Outputs are model assessments against stated criteria, not findings of law. Criteria must track the judgment text, with published error rates.
 4. **Coverage bias.** Tech-hub early adopters will over-cover pleasant streets; hotspots, collections and fog bonuses are the only levers now that paid fleets are out.
@@ -654,10 +699,12 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 
 ---
 
-## 10. Open questions for Nitesh
+## 10. Decisions and open questions
 
-- Confirm swapping Google Maps JS for Leaflet + PMTiles (lighter, no WebGL, no per-load billing; Google only for Street View link-out). Recommended.
-- Sign-in: anonymous-first plus optional phone OTP or Google sign-in? Phone OTP has SMS cost but is the norm in India.
-- Is Play Store distribution via TWA wanted for MVP launch (recommended), or web-only first?
-- Languages at launch: English, Kannada, Hindi. Anything else?
+**Confirmed by Nitesh:** Leaflet + PMTiles with Google only for Street View links; Google Sign-In as the only login; web-only launch first (no Play Store yet); English, Kannada and Hindi at launch; iOS supported from day one; minimise server compute (free, non-commercial).
+
+**Open:**
+- Who pays for the free tier's limits if usage grows: is there a grant, sponsor or credits source to target for scoring compute?
+- Private frame copies on our side (7-day TTL, consented) feed scoring before Mapillary's blur is relied on for public display. Is that acceptable under your reading of DPDP, or must frames be blurred on our side first (CPU detector in the batch)?
+- Is the repo going to be public (gives free GitHub Actions minutes for the nightly batch and fits the open-data ethos)?
 - Should hotspots draw on police black-spot data only where it is public, or also accept community nominations from day one?
