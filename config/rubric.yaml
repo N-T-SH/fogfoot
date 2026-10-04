@@ -1,0 +1,17 @@
+checks:
+  footpath_present: "Is there a footpath on this kerb?"
+  demarcated: "Is it raised or clearly marked off from the carriageway?"
+  clear_width_ok: "Is there at least ~1.8 m of clear walking width?"
+  continuous: "Is it continuous across the visible stretch?"
+  surface_ok: "Is the surface free of breaks, gaps or open drains?"
+  kerb_walkable: "Can a person step on and off without a high step?"
+  side_hint: "Is the camera on the left footpath, right footpath, or carriageway?"
+
+issues:                        # aligned to Sensing Local StepUP taxonomy
+  encroachment: [parking, planters, vendor_or_shop_spillover, construction_site]
+  obstruction: [junction_box, low_wires, overgrown_weeds, transformer]
+  waste: [construction_debris, garbage_blackspot, litter, silt]
+  footpath_quality: [broken, level_difference, no_footpath, open_drain]
+  safety: [dark_zone]
+
+output_format: json            # strict schema, validated with Pydantic
