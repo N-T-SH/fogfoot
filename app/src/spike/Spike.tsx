@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { angleDiffDeg, bearingDeg, cameraHeadingDeg, cfgFromUrl, envReport, haversineM, qualityGate } from "./measure";
 import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
 import type { EncodeReq, EncodeRes } from "./encode.worker";
+import { runBench, type BenchResult } from "./bench";
 
 // Spike A: measure whether eyes-up PWA capture is viable on low-end Android and iOS.
 // Defaults mirror config/settings.yaml `capture:`; tune from the exported report.
@@ -36,6 +37,8 @@ export function Spike() {
   const [msg, setMsg] = useState("");
   const [stats, setStats] = useState<Stats>(fresh());
   const [queued, setQueued] = useState({ n: 0, bytes: 0 });
+  const [bench, setBench] = useState<BenchResult | null>(null);
+  const [benchStep, setBenchStep] = useState("");
   const video = useRef<HTMLVideoElement>(null);
   const live = useRef({ stats: fresh(), stop: () => {} });
 
@@ -113,6 +116,7 @@ export function Spike() {
       // Falls back to the main-thread path if unsupported, errors, or ?worker=0.
       let workerOk = new URLSearchParams(location.search).get("worker") !== "0" &&
         typeof Worker !== "undefined" && "OffscreenCanvas" in window && typeof createImageBitmap === "function";
+      const fullGrab = new URLSearchParams(location.search).get("bmp") === "full"; // ?bmp=full: grab full-size, worker downscales
       let worker: Worker | null = null;
       const pending = new Map<number, (r: EncodeRes) => void>();
       let reqId = 0;
@@ -156,8 +160,11 @@ export function Spike() {
           if (workerOk) {
             const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
             let bitmap: ImageBitmap;
-            try { bitmap = await createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: "low" }); }
-            catch { bitmap = await createImageBitmap(v); }
+            if (fullGrab) bitmap = await createImageBitmap(v);
+            else {
+              try { bitmap = await createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: "low" }); }
+              catch { bitmap = await createImageBitmap(v); }
+            }
             st.bitmapMs.push(performance.now() - tStart);
             const res = await callWorker({ bitmap, maxWidth: CFG.maxWidth, quality: CFG.jpegQuality, minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, [bitmap]);
             st.roundtripMs.push(performance.now() - tStart);
@@ -226,9 +233,27 @@ export function Spike() {
       gpsAccLastM: st.gpsAcc, batteryDropPct: st.startBattery != null && st.battery != null ? st.startBattery - st.battery : null,
       heapMB: st.heapMB
     };
-    const text = JSON.stringify(r, null, 2);
+    return JSON.stringify({ ...r, bench }, null, 2);
+  }
+
+  function copyReport() {
+    const text = report();
     navigator.clipboard?.writeText(text).then(() => setMsg("Report copied to clipboard"), () => setMsg("Copy failed; see console"));
     console.log(text);
+  }
+
+  async function shareReport() {
+    const text = report();
+    try {
+      if (navigator.share) await navigator.share({ title: "fogfoot Spike A report", text });
+      else { await navigator.clipboard.writeText(text); setMsg("Sharing not supported here; report copied instead"); }
+    } catch (e) { if ((e as Error).name !== "AbortError") setMsg(`Share failed: ${(e as Error).message}`); }
+  }
+
+  async function quickCheck() {
+    setMsg(""); setBench(null);
+    try { setBench(await runBench(CFG, video.current!, setBenchStep)); setBenchStep("Done. Tap Share report."); }
+    catch (e) { setBenchStep(""); setMsg(`Quick check failed: ${(e as Error).message}`); }
   }
 
   const mb = (n: number) => (n / 1e6).toFixed(1);
@@ -239,10 +264,28 @@ export function Spike() {
       <video ref={video} playsInline muted />
       <div class="row">
         {!running ? <button class="primary" onClick={start}>Start walk</button> : <button onClick={stop}>Stop</button>}
-        <button onClick={report}>Copy report</button>
+        <button onClick={quickCheck} disabled={running}>Quick device check (30 s)</button>
+        <button onClick={shareReport}>Share report</button>
+        <button onClick={copyReport}>Copy report</button>
         <button class="danger" onClick={async () => { await clearFrames(); await refreshQueue(); }}>Clear queue</button>
       </div>
       {msg && <div class="bad">{msg}</div>}
+      {benchStep && <div style="color:var(--mut)">{benchStep}</div>}
+      {bench && (
+        <>
+          <h2>Quick check result ({bench.source}, {bench.sourceSize})</h2>
+          <table>
+            <tr><td>Main thread: ms per frame (avg / p95)</td><td>{bench.main.avgMs} / {bench.main.p95Ms}{bench.main.error ? ` ⚠ ${bench.main.error}` : ""}</td></tr>
+            <tr><td>Main thread: long stalls</td><td>{bench.main.longTasks}</td></tr>
+            <tr><td>Worker: ms per frame (avg / p95)</td><td>{bench.worker ? `${bench.worker.avgMs} / ${bench.worker.p95Ms}${bench.worker.error ? ` ⚠ ${bench.worker.error}` : ""}` : "not supported"}</td></tr>
+            <tr><td>Worker: long stalls</td><td>{bench.worker?.longTasks ?? "–"}</td></tr>
+            <tr><td>Worker, full-size grab (avg / p95)</td><td>{bench.workerFullGrab ? `${bench.workerFullGrab.avgMs} / ${bench.workerFullGrab.p95Ms}${bench.workerFullGrab.error ? ` ⚠ ${bench.workerFullGrab.error}` : ""}` : "not supported"}</td></tr>
+            <tr><td>Worker, full-size grab: long stalls</td><td>{bench.workerFullGrab?.longTasks ?? "–"}</td></tr>
+            <tr><td>Avg frame size</td><td>{bench.main.avgFrameKB} KB</td></tr>
+            <tr><td>Storage write</td><td>{bench.idb.error ? `⚠ ${bench.idb.error}` : `${bench.idb.msPerWrite} ms each`}</td></tr>
+          </table>
+        </>
+      )}
       <h2>Live</h2>
       <table>
         <tr><td>Frames kept</td><td>{stats.kept}</td></tr>
