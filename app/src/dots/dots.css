@@ -1,14 +1,17 @@
-.dots-root { position: fixed; inset: 0; background: #05060f; color: #f5f0e6; font: 15px/1.35 system-ui, sans-serif; }
-.dots-root .leaflet-container { background: #05060f; }
+.dots-root { position: fixed; inset: 0; background: #f4f1ea; color: #1b2330; font: 15px/1.35 system-ui, sans-serif; }
+.dots-root .leaflet-container { background: #f4f1ea; }
 .dots-canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
-.dim-tiles { filter: invert(1) hue-rotate(200deg) brightness(.55) contrast(.9) saturate(.5); }
-.dots-hud { position: absolute; z-index: 1000; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
-  background: linear-gradient(#05060fee, #05060f00); pointer-events: none; }
-.dots-hud h1 { margin: 0; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: #ffb300; font-weight: 700; }
+.soft-tiles { filter: grayscale(.4) brightness(1.04) contrast(.95); }
+.dots-hud { position: absolute; z-index: 1000; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 10px) 14px 14px;
+  background: linear-gradient(#ffffffee 60%, #ffffff00); pointer-events: none; }
+.dots-hud h1 { margin: 0; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #e65100; font-weight: 700; }
 .dots-hud .big { font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.dots-hud .sub { color: #9aa3c7; font-size: 13px; }
-.dots-bar { position: absolute; z-index: 1000; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
-  display: flex; flex-wrap: wrap; gap: 8px; background: linear-gradient(#05060f00, #05060fee 40%); }
-.dots-bar button { min-height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #2a3470; background: #0d1340; color: #f5f0e6; font-size: 15px; }
-.dots-bar button.on { background: #ffb300; color: #1a1200; border-color: #ffb300; font-weight: 700; }
-.dots-msg { position: absolute; z-index: 1000; left: 14px; right: 14px; top: 96px; color: #ff9a9a; font-size: 13px; pointer-events: none; }
+.dots-hud .sub { color: #56627a; font-size: 13px; }
+.dots-bar { position: absolute; z-index: 1000; left: 0; right: 0; bottom: 0; padding: 22px 12px calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; flex-wrap: wrap; gap: 8px; background: linear-gradient(#ffffff00, #fffffff0 45%); }
+.dots-bar button { min-height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #c9d1e4; background: #fff; color: #1b2330; font-size: 15px; box-shadow: 0 1px 2px #0002; }
+.dots-bar button.on { background: #ff9800; color: #1b1200; border-color: #ff9800; font-weight: 700; }
+.dots-msg { position: absolute; z-index: 1000; left: 14px; right: 14px; top: 104px; color: #b71c1c; font-size: 13px; pointer-events: none; background: #fffc; border-radius: 8px; padding: 4px 8px; }
+.dots-root .leaflet-top { top: 104px; }                 /* keep zoom buttons clear of the header */
+.dots-root .leaflet-bottom { bottom: 138px; }           /* keep the required map credit above the button bar */
+.dots-root .leaflet-control-attribution { background: #ffffffcc; font-size: 11px; }

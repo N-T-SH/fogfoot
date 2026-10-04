@@ -12,7 +12,33 @@ const MAX_GPS_ACC_M = 35;
 const WALK_SPEED_MS = 1.4;
 const ZOOM_DOTS = 16;        // below this zoom, show per-unit progress lines instead of individual dots
 
-interface Avatar { lat: number; lon: number; pulse: number }
+interface Avatar { lat: number; lon: number; pulse: number; phase: number; face: 1 | -1; moving: boolean }
+
+/** A walking person in silhouette (feet at the GPS point). Original artwork: strokes with a white outline so it reads on any map. */
+function drawWalker(ctx: CanvasRenderingContext2D, x: number, y: number, H: number, a: Avatar) {
+  const k = (H / 36) * (1 + a.pulse * 0.12), sw = a.moving ? Math.sin(a.phase) : 0;
+  ctx.save(); ctx.translate(x, y); ctx.scale(a.face * k, k); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const hip: [number, number] = [0, -17], sh: [number, number] = [1.6, -27];
+  const limb = (from: [number, number], l1: number, ang1: number, l2: number, ang2: number): [number, number][] => {
+    const m: [number, number] = [from[0] + l1 * Math.sin(ang1), from[1] + l1 * Math.cos(ang1)];
+    return [from, m, [m[0] + l2 * Math.sin(ang2), m[1] + l2 * Math.cos(ang2)]];
+  };
+  const leg = (ph: number) => { const t = a.moving ? 0.55 * Math.sin(ph) : 0; return limb(hip, 8.6, t, 8.6, t - (a.moving ? 0.75 * Math.max(0, Math.cos(ph)) : 0)); };
+  const arm = (ph: number) => { const t = a.moving ? -0.5 * Math.sin(ph) : 0.05; return limb(sh, 6.6, t, 6, t + (a.moving ? 0.55 : 0.1)); };
+  const parts: { pts: [number, number][]; w: number; c: string }[] = [
+    { pts: arm(a.phase + Math.PI), w: 3, c: "#4a5877" }, { pts: leg(a.phase + Math.PI), w: 3.6, c: "#4a5877" },
+    { pts: [hip, sh], w: 5, c: "#14213d" }, { pts: leg(a.phase), w: 3.6, c: "#14213d" }, { pts: arm(a.phase), w: 3, c: "#14213d" },
+  ];
+  for (const pass of [0, 1]) {
+    for (const p of parts) {
+      ctx.beginPath(); ctx.moveTo(...p.pts[0]); for (const q of p.pts.slice(1)) ctx.lineTo(...q);
+      ctx.strokeStyle = pass === 0 ? "#ffffff" : p.c; ctx.lineWidth = pass === 0 ? p.w + 2.6 : p.w; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(2.4, -32.2, 4.3, 0, 6.2832);
+    if (pass === 0) { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.6; ctx.stroke(); } else { ctx.fillStyle = "#14213d"; ctx.fill(); }
+  }
+  ctx.restore();
+}
 
 class DotLayer extends L.Layer {
   canvas!: HTMLCanvasElement;
@@ -47,7 +73,7 @@ class DotLayer extends L.Layer {
     const f = this.f, zoom = map.getZoom(), b = map.getBounds().pad(0.1);
     const pt = (lat: number, lon: number) => map.latLngToContainerPoint([lat, lon]);
 
-    // The maze: every unit as a faint line (shared streets dashed), coloured by progress when zoomed out.
+    // Every unit as a faint line (shared streets dashed); coloured by progress when zoomed out.
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (const u of f.units) {
       if (!b.intersects(L.latLngBounds(u.ll.map(([lo, la]) => [la, lo] as [number, number])))) continue;
@@ -56,39 +82,33 @@ class DotLayer extends L.Layer {
       const frac = u.count ? eaten / u.count : 0;
       ctx.beginPath();
       u.ll.forEach(([lo, la], i) => { const p = pt(la, lo); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
-      if (zoom >= ZOOM_DOTS) { ctx.strokeStyle = "#16226b"; ctx.lineWidth = u.shared ? 1.5 : 2.5; }
-      else { ctx.strokeStyle = frac === 0 ? "#16226b" : `hsl(${40 + 10 * frac} 100% ${30 + 40 * frac}%)`; ctx.lineWidth = 3; }
+      if (zoom >= ZOOM_DOTS) { ctx.strokeStyle = "rgba(40,70,160,.20)"; ctx.lineWidth = u.shared ? 1.5 : 2.5; }
+      else { ctx.strokeStyle = frac === 0 ? "rgba(60,90,170,.5)" : `hsl(${40 + 80 * frac} 85% 42%)`; ctx.lineWidth = 3.5; }
       ctx.setLineDash(u.shared ? [4, 5] : []);
       ctx.stroke();
     }
     ctx.setLineDash([]);
 
     if (zoom >= ZOOM_DOTS) {
-      const r = zoom >= 18 ? 4 : zoom >= 17 ? 3.2 : 2.4;
-      ctx.fillStyle = "#ffb300"; ctx.beginPath();
-      const pellets: [number, number][] = [];
+      const r = zoom >= 18 ? 4.5 : zoom >= 17 ? 3.6 : 2.8;
+      const dots: number[] = [], pellets: number[] = [], trail: number[] = [];
       for (let i = 0; i < f.n; i++) {
-        if (!b.contains([f.lat[i], f.lon[i]]) || this.prog.isEaten(f.key[i])) continue;
+        if (!b.contains([f.lat[i], f.lon[i]])) continue;
         const p = pt(f.lat[i], f.lon[i]);
-        if (f.power[i]) { pellets.push([p.x, p.y]); continue; }
-        ctx.moveTo(p.x + r, p.y); ctx.arc(p.x, p.y, r, 0, 6.2832);
+        if (this.prog.isEaten(f.key[i])) trail.push(p.x, p.y);
+        else (f.power[i] ? pellets : dots).push(p.x, p.y);
       }
-      ctx.fill();
-      const beat = 1 + 0.18 * Math.sin(performance.now() / 260);
-      ctx.fillStyle = "#ff7a1a";
-      for (const [x, y] of pellets) { ctx.beginPath(); ctx.arc(x, y, r * 2.4 * beat, 0, 6.2832); ctx.fill(); }
+      const circles = (xy: number[], rad: number) => { for (let i = 0; i < xy.length; i += 2) { ctx.moveTo(xy[i] + rad, xy[i + 1]); ctx.arc(xy[i], xy[i + 1], rad, 0, 6.2832); } };
+      ctx.fillStyle = "rgba(46,125,50,.55)"; ctx.beginPath(); circles(trail, r * 0.4); ctx.fill();     // where you have been
+      ctx.fillStyle = "#ffffff"; ctx.beginPath(); circles(dots, r + 1.8); ctx.fill();                 // halo so dots read on any map
+      ctx.fillStyle = "#ff9800"; ctx.beginPath(); circles(dots, r); ctx.fill();
+      const beat = 1 + 0.16 * Math.sin(performance.now() / 260), pr = r * 2.3 * beat;
+      ctx.fillStyle = "#ffffff"; ctx.beginPath(); circles(pellets, pr + 2); ctx.fill();
+      ctx.fillStyle = "#e53935"; ctx.beginPath(); circles(pellets, pr); ctx.fill();
     }
 
     const a = this.avatar();
-    if (a) {
-      const p = pt(a.lat, a.lon), s = 1 + a.pulse * 0.35, R = (zoom >= 17 ? 13 : 10) * s;
-      ctx.fillStyle = "#ffffff"; ctx.globalAlpha = 0.95;           // a little fog puff, not a pie chart
-      for (const [dx, dy, k] of [[0, 0, 1], [-0.7, 0.25, 0.7], [0.7, 0.25, 0.7], [0, -0.55, 0.65]] as const) {
-        ctx.beginPath(); ctx.arc(p.x + dx * R, p.y + dy * R, R * k, 0, 6.2832); ctx.fill();
-      }
-      ctx.globalAlpha = 1; ctx.fillStyle = "#1a1200";
-      for (const dx of [-0.32, 0.32]) { ctx.beginPath(); ctx.arc(p.x + dx * R, p.y - 0.05 * R, R * 0.13, 0, 6.2832); ctx.fill(); }
-    }
+    if (a) { const p = pt(a.lat, a.lon); drawWalker(ctx, p.x, p.y, zoom >= 17 ? 40 : 32, a); }
   };
 }
 
@@ -99,7 +119,7 @@ function DotsApp({ data }: { data: DemoFile }) {
     avatar: null as Avatar | null, mode: "idle" as "idle" | "sim" | "gps", route: [] as [number, number][], cum: [] as number[], s: 0,
     speed: 12, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
   });
-  const [hud, setHud] = useState({ eaten: 0, total: 0, session: 0, mode: "idle" as string, speed: 12, tiles: false, days: 0, msg: "" });
+  const [hud, setHud] = useState({ eaten: 0, total: 0, session: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "" });
   const hudRef = useRef(hud); hudRef.current = hud;
   const patch = (p: Partial<typeof hud>) => setHud((h) => ({ ...h, ...p }));
 
@@ -153,7 +173,12 @@ function DotsApp({ data }: { data: DemoFile }) {
       L_.s += WALK_SPEED_MS * L_.speed * dt;
       if (L_.s >= L_.cum[L_.cum.length - 1]) { stop(); return; }
       const [x, y] = posAt(L_.s), lat = f.lat0 + y / f.ky, lon = f.lon0 + x / f.kx;
-      L_.avatar = { lat, lon, pulse: Math.max(0, (L_.avatar?.pulse ?? 0) - dt * 4) };
+      const prev = L_.avatar;
+      L_.avatar = {
+        lat, lon, pulse: Math.max(0, (prev?.pulse ?? 0) - dt * 4), moving: true,
+        phase: (prev?.phase ?? 0) + (2 * Math.PI * WALK_SPEED_MS * 2 * dt) / 1.4,        // cadence of a normal walk, not of the ×N speed-up
+        face: prev && Math.abs(lon - prev.lon) > 2e-8 ? (lon > prev.lon ? 1 : -1) : prev?.face ?? 1,
+      };
       eatAt(lat, lon, SIM_EAT_RADIUS_M);
       if (t - L_.lastPan > 300) { L_.lastPan = t; const p = map.latLngToContainerPoint([lat, lon]), sz = map.getSize();
         if (p.x < sz.x * 0.25 || p.x > sz.x * 0.75 || p.y < sz.y * 0.3 || p.y > sz.y * 0.65) map.panTo([lat, lon], { animate: false }); }
@@ -172,11 +197,17 @@ function DotsApp({ data }: { data: DemoFile }) {
     L_.mode = "gps";
     L_.watch = navigator.geolocation.watchPosition((p) => {
       const lat = p.coords.latitude, lon = p.coords.longitude;
-      L_.avatar = { lat, lon, pulse: L_.avatar?.pulse ?? 0 };
+      const pv = L_.avatar;
+      const moved = pv ? Math.hypot((lon - pv.lon) * f.kx, (lat - pv.lat) * f.ky) : 0;
+      L_.avatar = {
+        lat, lon, pulse: Math.max(0, (pv?.pulse ?? 0) - 0.3), moving: moved > 0.5,
+        phase: (pv?.phase ?? 0) + (2 * Math.PI * moved) / 1.4,
+        face: pv && Math.abs(lon - pv.lon) > 2e-8 ? (lon > pv.lon ? 1 : -1) : pv?.face ?? 1,
+      };
       const [x, y] = toLocal(f, lon, lat);
       const near = dotsNear(f, x, y, 40).length;
       if (p.coords.accuracy > MAX_GPS_ACC_M) { patch({ msg: `GPS is vague (${Math.round(p.coords.accuracy)} m), not counting yet.` }); }
-      else if (!near && hudRef.current.session === 0) patch({ msg: "You're outside the demo area (Koramangala). Try Simulate walk." });
+      else if (!near && hudRef.current.session === 0) patch({ msg: `You're outside the demo area (${data.name}). Try Simulate walk.` });
       else { patch({ msg: "" }); eatAt(lat, lon, GPS_EAT_RADIUS_M); }
       map.panTo([lat, lon], { animate: false });
       L_.layer!.redraw(); refreshHud({ session: hudRef.current.session, mode: "gps" });
@@ -195,24 +226,27 @@ function DotsApp({ data }: { data: DemoFile }) {
     L.control.zoom({ position: "topright" }).addTo(map);
     L_.map = map;
     L_.layer = new DotLayer(L_.f, L_.prog, () => L_.avatar).addTo(map) as DotLayer;
+    setTiles(true);
     const beat = setInterval(() => { if (L_.mode === "idle") L_.layer?.redraw(); }, 400); // pellets pulse
     patch({ total: L_.f.n, eaten: countEaten(), days: L_.prog.offsetDays });
     return () => { clearInterval(beat); stop(); map.remove(); };
   }, []);
 
-  const toggleTiles = () => {
+  const setTiles = (on: boolean) => {
     const L_ = live.current, map = L_.map!;
-    if (L_.tiles) { map.removeLayer(L_.tiles); L_.tiles = null; patch({ tiles: false }); return; }
-    L_.tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "dim-tiles", attribution: "© OpenStreetMap contributors" }).addTo(map);
+    if (!on) { if (L_.tiles) map.removeLayer(L_.tiles); L_.tiles = null; patch({ tiles: false }); return; }
+    // Prototype only: OSM's public tile servers are not for production traffic; the real app uses its own PMTiles.
+    L_.tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "soft-tiles", attribution: "© OpenStreetMap contributors" }).addTo(map);
     L_.tiles.bringToBack(); patch({ tiles: true });
   };
+  const toggleTiles = () => setTiles(!live.current.tiles);
 
   const pct = hud.total ? Math.round((100 * hud.eaten) / hud.total) : 0;
   return (
     <div class="dots-root">
       <div ref={mapEl} style="position:absolute;inset:0" />
       <div class="dots-hud">
-        <h1>dots · concept</h1>
+        <h1>dots · concept · {data.name}</h1>
         <div class="big">{hud.eaten.toLocaleString()} <span class="sub">of {hud.total.toLocaleString()} dots · {pct}%</span></div>
         <div class="sub">+{hud.session} this walk · a dot every {DOT_SPACING_M} m · regrows after {DECAY_DAYS} days{hud.days ? ` · clock +${hud.days}d` : ""}</div>
       </div>
@@ -230,6 +264,8 @@ function DotsApp({ data }: { data: DemoFile }) {
 }
 
 export async function mountDots(el: HTMLElement) {
-  const data = (await (await fetch(import.meta.env.BASE_URL + "demo-units.json")).json()) as DemoFile;
+  const area = new URLSearchParams(location.hash.split("?")[1] ?? "").get("area") ?? "domlur"; // #/dots?area=koramangala
+  const file = area === "koramangala" ? "demo-units-koramangala.json" : "demo-units-domlur.json";
+  const data = (await (await fetch(import.meta.env.BASE_URL + file)).json()) as DemoFile;
   render(<DotsApp data={data} />, el);
 }
