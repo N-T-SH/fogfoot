@@ -1,0 +1,185 @@
+import { useEffect, useRef, useState } from "preact/hooks";
+import { bearingDeg, envReport, haversineM, qualityGate } from "./measure";
+import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
+
+// Spike A: measure whether eyes-up PWA capture is viable on low-end Android and iOS.
+// Defaults mirror config/settings.yaml `capture:`; tune from the exported report.
+const CFG = { sampleEveryM: 10, jpegQuality: 0.6, maxWidth: 960, minSharpness: 40, minLuma: 45, maxGpsAccM: 35 };
+
+interface Stats {
+  kept: number; blurry: number; dark: number; badGps: number;
+  gateMs: number[]; encodeMs: number[]; bytes: number;
+  longTasks: number; gpsAcc: number | null; headingSource: string; distanceM: number;
+  startedAt: number | null; startBattery: number | null; battery: number | null; heapMB: number | null;
+}
+const fresh = (): Stats => ({
+  kept: 0, blurry: 0, dark: 0, badGps: 0, gateMs: [], encodeMs: [], bytes: 0, longTasks: 0,
+  gpsAcc: null, headingSource: "none", distanceM: 0, startedAt: null, startBattery: null, battery: null, heapMB: null
+});
+const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+const pct = (a: number[], p: number) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+
+export function Spike() {
+  const [env, setEnv] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [stats, setStats] = useState<Stats>(fresh());
+  const [queued, setQueued] = useState({ n: 0, bytes: 0 });
+  const video = useRef<HTMLVideoElement>(null);
+  const live = useRef({ stats: fresh(), stop: () => {} });
+
+  const refreshQueue = async () => setQueued({ n: await frameCount(), bytes: await totalBytes() });
+  useEffect(() => { envReport().then(setEnv); refreshQueue(); }, []);
+
+  async function start() {
+    setMsg("");
+    const s = fresh(); s.startedAt = Date.now(); live.current.stats = s; setStats({ ...s });
+    const cleanups: Array<() => void> = [];
+    try {
+      // 1. Sensors permission must come from a user gesture on iOS.
+      const DOE = (window as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } }).DeviceOrientationEvent;
+      if (DOE?.requestPermission) { try { await DOE.requestPermission(); } catch { /* denied */ } }
+
+      // 2. Persistent storage (helps against eviction).
+      if (navigator.storage?.persist) await navigator.storage.persist();
+
+      // 3. Rear camera, 720p.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+      });
+      cleanups.push(() => stream.getTracks().forEach((t) => t.stop()));
+      const v = video.current!; v.srcObject = stream; v.muted = true; v.playsInline = true; await v.play();
+
+      // 4. Wake lock (foreground only).
+      try {
+        const wl = await (navigator as Navigator & { wakeLock?: { request(t: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock?.request("screen");
+        if (wl) cleanups.push(() => { wl.release().catch(() => {}); });
+      } catch { setMsg("Wake lock refused; screen may sleep."); }
+
+      // 5. Heading: compass if it actually reports, else GPS course.
+      let compass: number | null = null;
+      const onOri = (e: DeviceOrientationEvent) => {
+        const w = (e as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
+        if (typeof w === "number") compass = w; else if (e.absolute && e.alpha != null) compass = (360 - e.alpha) % 360;
+      };
+      window.addEventListener("deviceorientationabsolute" as "deviceorientation", onOri);
+      window.addEventListener("deviceorientation", onOri);
+      cleanups.push(() => { window.removeEventListener("deviceorientationabsolute" as "deviceorientation", onOri); window.removeEventListener("deviceorientation", onOri); });
+
+      // 6. Long-task counter (main-thread jank proxy).
+      try {
+        const po = new PerformanceObserver((l) => { live.current.stats.longTasks += l.getEntries().length; });
+        po.observe({ entryTypes: ["longtask"] }); cleanups.push(() => po.disconnect());
+      } catch { /* unsupported (e.g. Safari) */ }
+
+      // 7. Battery/memory sampling.
+      const nav = navigator as Navigator & { getBattery?: () => Promise<{ level: number }> };
+      const bat = nav.getBattery ? await nav.getBattery() : null;
+      if (bat) s.startBattery = Math.round(bat.level * 100);
+      const tick = setInterval(() => {
+        const st = live.current.stats;
+        if (bat) st.battery = Math.round(bat.level * 100);
+        const pm = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+        if (pm) st.heapMB = Math.round(pm.usedJSHeapSize / 1e6);
+        setStats({ ...st });
+      }, 2000);
+      cleanups.push(() => clearInterval(tick));
+
+      // 8. GPS-driven sampler.
+      const scratch = document.createElement("canvas");
+      const out = document.createElement("canvas");
+      let last: { lat: number; lon: number } | null = null;
+      let prev: { lat: number; lon: number } | null = null;
+      let course: number | null = null;
+      let busy = false;
+      const wid = navigator.geolocation.watchPosition(async (p) => {
+        const st = live.current.stats;
+        const cur = { lat: p.coords.latitude, lon: p.coords.longitude };
+        st.gpsAcc = Math.round(p.coords.accuracy);
+        if (prev && haversineM(prev, cur) > 3) course = bearingDeg(prev, cur);
+        prev = cur;
+        if (p.coords.accuracy > CFG.maxGpsAccM) { st.badGps++; return; }
+        if (last && haversineM(last, cur) < CFG.sampleEveryM) return;
+        if (busy || v.videoWidth === 0) return;
+        busy = true;
+        try {
+          const t0 = performance.now();
+          const gate = qualityGate(v, { minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, scratch);
+          st.gateMs.push(performance.now() - t0);
+          if (!gate.ok) { if (gate.reason === "dark") st.dark++; else st.blurry++; return; }
+          const t1 = performance.now();
+          const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
+          out.width = w; out.height = h; out.getContext("2d")!.drawImage(v, 0, 0, w, h);
+          const blob: Blob = await new Promise((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error("encode"))), "image/jpeg", CFG.jpegQuality));
+          st.encodeMs.push(performance.now() - t1);
+          const heading = compass ?? course;
+          st.headingSource = compass != null ? "compass" : course != null ? "gps_course" : "none";
+          await putFrame({ at: Date.now(), lat: cur.lat, lon: cur.lon, acc: p.coords.accuracy, heading, blob });
+          st.kept++; st.bytes += blob.size; if (last) st.distanceM += haversineM(last, cur);
+          last = cur;
+        } catch (e) { setMsg(`Capture error: ${(e as Error).message}. Storage full?`); }
+        finally { busy = false; }
+      }, (e) => setMsg(`GPS error: ${e.message}`), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+      cleanups.push(() => navigator.geolocation.clearWatch(wid));
+
+      live.current.stop = () => { cleanups.forEach((c) => c()); };
+      setRunning(true);
+    } catch (e) {
+      cleanups.forEach((c) => c());
+      setMsg(`Could not start: ${(e as Error).message}`);
+    }
+  }
+
+  async function stop() { live.current.stop(); setRunning(false); await refreshQueue(); setStats({ ...live.current.stats }); }
+
+  function report() {
+    const st = live.current.stats;
+    const mins = st.startedAt ? (Date.now() - st.startedAt) / 60000 : 0;
+    const r = {
+      when: new Date().toISOString(), cfg: CFG, env, minutes: +mins.toFixed(1),
+      kept: st.kept, dropped: { blurry: st.blurry, dark: st.dark, badGps: st.badGps },
+      gateMs: { avg: +avg(st.gateMs).toFixed(1), p95: +pct(st.gateMs, 0.95).toFixed(1) },
+      encodeMs: { avg: +avg(st.encodeMs).toFixed(1), p95: +pct(st.encodeMs, 0.95).toFixed(1) },
+      avgFrameKB: st.kept ? Math.round(st.bytes / st.kept / 1024) : 0, totalMB: +(st.bytes / 1e6).toFixed(1),
+      distanceM: Math.round(st.distanceM), longTasks: st.longTasks, headingSource: st.headingSource,
+      gpsAccLastM: st.gpsAcc, batteryDropPct: st.startBattery != null && st.battery != null ? st.startBattery - st.battery : null,
+      heapMB: st.heapMB
+    };
+    const text = JSON.stringify(r, null, 2);
+    navigator.clipboard?.writeText(text).then(() => setMsg("Report copied to clipboard"), () => setMsg("Copy failed; see console"));
+    console.log(text);
+  }
+
+  const mb = (n: number) => (n / 1e6).toFixed(1);
+  return (
+    <main>
+      <h1>fogfoot · Spike A</h1>
+      <div style="color:var(--mut)">Capture viability test. Hold the phone at chest height, camera forward, and walk ~2 km.</div>
+      <video ref={video} playsInline muted />
+      <div class="row">
+        {!running ? <button class="primary" onClick={start}>Start walk</button> : <button onClick={stop}>Stop</button>}
+        <button onClick={report}>Copy report</button>
+        <button class="danger" onClick={async () => { await clearFrames(); await refreshQueue(); }}>Clear queue</button>
+      </div>
+      {msg && <div class="bad">{msg}</div>}
+      <h2>Live</h2>
+      <table>
+        <tr><td>Frames kept</td><td>{stats.kept}</td></tr>
+        <tr><td>Dropped (blurry / dark / bad GPS)</td><td>{stats.blurry} / {stats.dark} / {stats.badGps}</td></tr>
+        <tr><td>Distance</td><td>{Math.round(stats.distanceM)} m</td></tr>
+        <tr><td>GPS accuracy</td><td>{stats.gpsAcc ?? "–"} m</td></tr>
+        <tr><td>Heading source</td><td>{stats.headingSource}</td></tr>
+        <tr><td>Gate ms avg / p95</td><td>{avg(stats.gateMs).toFixed(1)} / {pct(stats.gateMs, 0.95).toFixed(1)}</td></tr>
+        <tr><td>Encode ms avg / p95</td><td>{avg(stats.encodeMs).toFixed(1)} / {pct(stats.encodeMs, 0.95).toFixed(1)}</td></tr>
+        <tr><td>Avg frame size</td><td>{stats.kept ? Math.round(stats.bytes / stats.kept / 1024) : 0} KB</td></tr>
+        <tr><td>Long tasks (jank)</td><td>{stats.longTasks}</td></tr>
+        <tr><td>Battery start → now</td><td>{stats.startBattery ?? "n/a"} → {stats.battery ?? "n/a"} %</td></tr>
+        <tr><td>JS heap</td><td>{stats.heapMB ?? "n/a"} MB</td></tr>
+      </table>
+      <h2>Queue (IndexedDB)</h2>
+      <table><tr><td>Stored frames</td><td>{queued.n} ({mb(queued.bytes)} MB)</td></tr></table>
+      <h2>Device</h2>
+      <table>{Object.entries(env).map(([k, v]) => <tr><td>{k}</td><td>{v}</td></tr>)}</table>
+    </main>
+  );
+}
