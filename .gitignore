@@ -1,0 +1,28 @@
+# secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.dev.vars
+wrangler.toml.local
+
+# data (never commit raw frames, trails, user data, DB snapshots, weights)
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+models/
+*.gguf
+*.safetensors
+
+# build and tooling
+node_modules/
+dist/
+.wrangler/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.DS_Store

@@ -121,7 +121,7 @@ No cash payouts, paid verification, paid rider fleets, employer challenges or CS
 | Storage | Batch DB: SQLite + SpatiaLite (source of truth). Interactive state in D1. Frames in R2 with short TTL. Tiles and snapshots as static files on the CDN | |
 | Geo | osmnx, shapely 2, pyproj, geopandas, rtree | |
 | Public imagery | Mapillary (upload via `mapillary_tools`; read via API v4) | Open licence; verify current terms |
-| Privacy | Mapillary blurs faces and plates before publication; we host no public imagery. Our private frame copies are short-lived. CPU blur fallback (small ONNX detector) in batch if Spike C shows Mapillary's blur is insufficient. | See §3.2 and Spike C |
+| Privacy | **We blur faces and number plates ourselves (CPU ONNX detector, nightly batch) before anything is pushed to Mapillary**; Mapillary's own automatic blur is a second layer. We host no public imagery. Raw private copies are deleted right after blurring (hard TTL 7 days). | See §3.3 (DPDP) and Spike C |
 | Scoring model | Small open-weights vision-language model under a hard budget | See §3.1. No on-device ML in MVP (low-end phones); cheap non-ML checks run on device. |
 | Fine-tuning | Hugging Face TRL + PEFT (LoRA / QLoRA) | Post-MVP; collect labels now |
 | Config | YAML in `config/`, loaded via Pydantic settings | |
@@ -148,9 +148,30 @@ fogfoot is a free public-interest service, so the design pushes work to the plac
 4. **Cheap on-device gating (no ML).** Before upload the phone drops frames that are blurry (Laplacian variance), too dark (mean luma), duplicate (pHash), or fail GPS sanity (speed, jump, accuracy). Sampling is every 10 m, giving ~200 frames per 2 km walk. This cuts upload data and downstream compute together.
 5. **Spend model compute only where it matters.** Score at most 3 best frames per unit (chosen by sharpness and GPS accuracy), only units with new frames, and only re-score when ≥ 2 new frames arrive. Everything else reuses the previous assessment until fog regrows.
 6. **Crowd before compute.** Verify consensus settles clear-cut frames and feeds calibration, so the VLM is a triage tool, not the only judge.
-7. **Bounded storage.** Frames in R2 are deleted after scoring plus a short TTL (`frame_retention_days`, default 7). Public imagery lives on Mapillary; evidence packs link to Mapillary image IDs and keep only scores, crops metadata and IDs on our side.
+7. **Bounded storage.** Raw frames in R2 are deleted once blurred copies exist and scoring is done, with a hard TTL (`frame_retention_days`, default 7); only blurred copies feed scoring and Mapillary. Public imagery lives on Mapillary; evidence packs link to Mapillary image IDs and keep only scores, crops metadata and IDs on our side.
 8. **Anti-cheat in two tiers.** Light checks on device and at the edge; the authoritative checks run in the nightly batch before points go from provisional to final. No cash is involved, so there is no need for real-time fraud screening.
 9. **Cost watch.** Track monthly cost and compute minutes; the budget cap in §3.1 and Cloudflare/GitHub free-tier limits are release-gate alarms.
+
+### 3.3 India data protection (DPDP Act 2023 and DPDP Rules 2025)
+
+*This is an engineering reading, not legal advice. Have an Indian data-protection lawyer or advisor confirm it before launch; several figures below come from secondary summaries and must be checked against the Rules text.*
+
+**Timeline (to verify).** The Act was passed in 2023. The Rules were notified on 13 Nov 2025 with phased commencement: institutional provisions immediately, Consent Manager rules on 13 Nov 2026, and the main duties (notice, consent, safeguards, breach, erasure, children, rights, penalties) on about 13 May 2027. fogfoot launches before that date, but we build to the 2027 standard from day one: there is no reason to rework later, and a free service handling location trails and photos still carries reputational risk.
+
+**What personal data we touch**
+- Walkers: Google subject (hashed), handle, precise GPS trails and timestamps, device class, votes and points.
+- Bystanders: faces and number plates in street frames. They cannot consent, so minimisation is the control, not consent.
+
+**Design decisions that follow**
+1. **Blur before store and before publish** (§3, Spike C). Raw frames live at most 7 days, privately, and are never shown or exported.
+2. **Notice and consent, itemised and plain-language** in English, Kannada and Hindi before first capture: what we collect, why (mapping footpath condition), that blurred frames are published openly on Mapillary, that data is processed by Cloudflare, Google and Mapillary (some outside India), and how to withdraw. Publication to Mapillary is a separate, clearly labelled consent that capture requires; browsing needs none. Withdrawal is as easy as giving consent (a settings button).
+3. **Purpose limitation and minimisation.** Collect only what scoring and game integrity need. Raw GPS trails kept ≤ 90 days, then reduced to unit-level coverage records. No ads, no analytics SDKs, no data sales or sharing; telemetry is opt-in and contains no location.
+4. **Children.** Under-18s need verifiable parental consent under the Act and tracking of children is restricted. Simplest compliant route: **18+ only**, enforced by a self-declaration gate before sign-in, with a clear statement in the terms. Revisit school-zone features only with proper parental consent design.
+5. **Rights and grievance.** In-app "Download my data", "Delete my account and data", correction of handle, and a named grievance contact with a response SLA. Deleting an account removes trails and votes, and removes the user's attribution; already-blurred published frames cannot be recalled from Mapillary, so the notice says so, and a per-frame takedown request path is offered.
+6. **Security safeguards.** Encryption in transit and at rest (R2/D1 defaults), least-privilege tokens, no keys in the repo (§11), access logging on the edge, and a short breach runbook (assess, contain, notify users and the Data Protection Board as the Rules require).
+7. **Retention schedule** documented in `docs/data-retention.md` and enforced by the nightly batch (raw frames 7 days, trails 90 days, ledger records retained for the public record without personal identifiers).
+8. **Records.** Keep a record of consent version and timestamp per user, and a processing register in `docs/`.
+9. **Significant Data Fiduciary** status is unlikely at MVP scale but monitor user numbers and data sensitivity.
 
 ---
 
@@ -182,7 +203,7 @@ fogfoot/
 │   │   │   └── units.py       # OSM roads -> 100 m kerb units per side
 │   │   ├── ingest/
 │   │   │   ├── captures.py    # list new uploads in R2, download for the batch
-│   │   │   ├── blur.py        # CPU fallback only, if Mapillary blur proves insufficient
+│   │   │   ├── blur.py        # CPU face + plate blur, runs before scoring and Mapillary push
 │   │   │   ├── mapillary_push.py
 │   │   │   └── mapillary_pull.py
 │   │   ├── match/
@@ -316,7 +337,8 @@ mapillary:
   push: true
   token_env: MAPILLARY_TOKEN
   organization_env: MAPILLARY_ORG_ID
-  push_after: blur_check      # Mapillary blurs faces/plates; fall back to our CPU blur if Spike C fails
+  push_after: blur            # never push unblurred frames; Mapillary's blur is a second layer
+  credit_contributors: false  # push under the org account; per-user credit only with explicit opt-in
 
 maps:
   google_maps_key_env: GOOGLE_MAPS_API_KEY
@@ -602,7 +624,7 @@ curl -s "https://graph.mapillary.com/images?access_token=$MAPILLARY_TOKEN&fields
 
 Also:
 - Obtain the Supreme Court judgment text; fill `compliance.yaml` citations and confirm each criterion against the text.
-- Look for public pedestrian black-spot data for the pilot wards (Bengaluru Traffic Police, OpenCity) to seed hotspots.
+- Seed hotspots from public black-spot sources (see §8a): fetch and verify each source page, geocode the named locations by hand into `data/seeds/blackspots.csv` with source URL, publication date and licence, and keep only locations in the pilot wards.
 - Write to Sensing Local about HSR Layout audit data (they audited HSR; overlap makes it the best calibration set).
 - Confirm Mapillary upload terms, licence and organisation account setup.
 
@@ -628,7 +650,7 @@ Capture is foreground only on both platforms. If iOS fails any of these, report 
 
 **SPIKE E — low-end map rendering.** Prototype the Leaflet + PMTiles map with ~3,000 units on the reference low-end phones. Confirm the performance budgets in §0.4 and decide whether Canvas rendering needs further simplification (zoom-dependent geometry, ward-level aggregate at low zoom).
 
-**SPIKE C — privacy blur.** Upload 50 frames from the pilot to a test Mapillary account and check, by eye, face and plate recall of Mapillary's automatic blur at our 960 px / q0.6 resolution. If recall is not adequate, test a small CPU ONNX detector in the batch as the fallback. Also confirm Mapillary's current terms on automated blur and on uploads from an organisation account.
+**SPIKE C — privacy blur.** Pick a small CPU face + number-plate detector (ONNX; check licence is compatible with a public repo, e.g. not research-only). On 50 pilot frames at 960 px / q0.6, report face and plate recall by eye and CPU seconds per frame. Target ≥ 95% face and plate recall on clearly visible subjects; residual misses are covered by Mapillary's own blur as a second layer. Also confirm Mapillary's current terms for uploads from an organisation account.
 
 **SPIKE D — model bake-off (small).** Score 100 hand-labelled frames with 2–3 baseline open-weights models, **including at least one ≤4B quantised CPU-runnable model**; report accuracy per check, seconds per frame on CPU, and cost per 1,000 frames. This sets the real `monthly_frame_budget`.
 
@@ -639,7 +661,7 @@ Capture is foreground only on both platforms. If iOS fails any of these, report 
 ### Phase 2 — Capture, ingest, Mapillary
 - Capture view: distance sampling with the adaptive governor, heading with GPS-course fallback, wake lock, tap-anywhere flag, IndexedDB queue with quota awareness, encode worker, resumable Wi-Fi-first uploader, large high-contrast UI readable in sun, simple "hold the phone at chest height, camera forward" onboarding in 3 languages.
 - Phone: on-device gate, 10 m sampling, direct-to-R2 resumable upload via presigned URLs from the edge Worker.
-- Nightly batch: ingest → push to Mapillary (blur check per Spike C) → match → delete private copy after scoring/TTL. Mapillary pull is post-MVP.
+- Nightly batch: ingest → blur (CPU) → match → score → push blurred frames to Mapillary → delete raw copies. Mapillary pull is post-MVP.
 - `fogfoot match` assigns frames to units with `side_conf`.
 - **Accept:** a 2 km walk captured on a reference low-end phone appears as blurred frames on Mapillary and matched units within 1 hour of upload; ≥ 85% correct unit and side on a 100-frame labelled sample **including low-end-phone GPS traces**; upload survives airplane-mode toggling mid-walk without losing frames.
 
@@ -673,7 +695,7 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 - **Accept:** evidence pack shows dated frames, criteria failed, issue codes, owner agency and judgment reference.
 
 ### Phase 8 — Public release hardening
-- DPDP Act review: consent (including Mapillary publication), retention, deletion on request; privacy policy and terms in en/kn/hi.
+- DPDP compliance checklist in §3.3 completed and reviewed by a lawyer or data-protection advisor before public launch; privacy notice and terms in en/kn/hi.
 - Abuse and moderation: report/takedown on any frame, rate limits per device and IP, upload size caps, spam/NSFW check on frames before publication.
 - Web launch: custom domain, HTTPS, install guides for Android and iOS (en/kn/hi), soft launch with a small cohort before announcing. Play Store TWA is a post-MVP follow-up.
 - Real-world validation: 10+ testers on budget Android phones across at least 3 brands, plus at least 3 iPhone users, complete a 2 km walk and a Verify session; collect device class, crash and battery feedback. Fix before public rollout.
@@ -681,6 +703,19 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 - Cost ceiling: scoring budget cap (§3.1), alarms before Cloudflare/GitHub free-tier limits, and graceful degradation (oldest-first, units shown as "awaiting assessment") if exceeded. Add a donations or grants note only if the user wants it; no ads and no data sales.
 - Metrics: weekly active walkers, units refreshed, coverage by ward, hotspot completion, verify throughput, scoring cost per 1,000 frames, capture success rate by device class.
 - PostGIS migration path (post-MVP).
+
+---
+
+## 8a. Hotspot seed data: what exists publicly
+
+Findings from a first web search (sources could not be opened directly from the build environment, so treat figures as unverified and re-check them in Phase 0):
+
+- Bengaluru Traffic Police has identified **about 64 accident black spots** in the city per Deccan Herald reporting, with Citizen Matters citing about 60; roughly 19 lie on the Outer Ring Road. The definition used follows NHAI's: a 500 m stretch with five fatal or grievous accidents, or ten deaths, in three years.
+- Fatality context: pedestrian deaths in Bengaluru were reported as 248 (2022), 287 (2023) and 233 (2024).
+- A published list of locations exists in news form, **but no machine-readable, pedestrian-specific dataset was found**. Reporting says FIR-level accident location data is not in the public domain.
+- OpenCity has an explainer on Bengaluru's accident hotspots; check whether it links an open dataset and under what licence.
+
+**Plan:** hotspots draw on four sources in this order: (1) the public black-spot list, hand-geocoded and cited; (2) our own `issue_clusters` from the ledger; (3) `suspected_from_fog`; (4) community nominations (moderated, one per user per week, must be on a footpath). A black spot is a *reason to look*, never a place to stand: the hotspot is attached to the nearest footpath units, never the carriageway, and daylight-only (Hard problem 5). Do not scrape paywalled or restricted sources; cite and attribute each seed, and check licences before redistributing the list in the repo.
 
 ---
 
@@ -703,8 +738,23 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 
 **Confirmed by Nitesh:** Leaflet + PMTiles with Google only for Street View links; Google Sign-In as the only login; web-only launch first (no Play Store yet); English, Kannada and Hindi at launch; iOS supported from day one; minimise server compute (free, non-commercial).
 
+**Also confirmed:** public repo (nothing sensitive in git, see §11); no funding source for MVP, so the free-tier and scoring-budget design in §3.1–3.2 is mandatory; hotspots use whatever public sources we can find and verify (§8a).
+
 **Open:**
-- Who pays for the free tier's limits if usage grows: is there a grant, sponsor or credits source to target for scoring compute?
-- Private frame copies on our side (7-day TTL, consented) feed scoring before Mapillary's blur is relied on for public display. Is that acceptable under your reading of DPDP, or must frames be blurred on our side first (CPU detector in the batch)?
-- Is the repo going to be public (gives free GitHub Actions minutes for the nightly batch and fits the open-data ethos)?
-- Should hotspots draw on police black-spot data only where it is public, or also accept community nominations from day one?
+- Licence for the public repo. Recommendation: AGPL-3.0 for code (keeps forks of the service open), and an open data licence for published exports (ODbL, matching OpenStreetMap-derived data). Needs your call before the first public push.
+- Lawyer or advisor to review §3.3 before launch (budget a few hours; there are India-based data-protection clinics and pro bono options for civic-tech projects).
+- Confirm 18+ only is acceptable for the MVP audience.
+
+---
+
+## 11. Public repository and secrets hygiene
+
+The repo is public, so assume everything committed is permanent and world-readable.
+
+- **No secrets in git, ever.** Mapillary token, Google OAuth client secret, Cloudflare tokens, R2 keys, scoring endpoint keys live only in Cloudflare Worker secrets, GitHub Actions encrypted secrets, and local `.env` files (gitignored). Only `.env.example` with placeholder names is committed.
+- **Client-side values are public by design** (Google OAuth *client ID*, basemap tile URL). Restrict them: OAuth authorised origins to our domain, tile keys to our referrer.
+- **Secret scanning.** `gitleaks` runs in CI on every push and PR, and as a local pre-commit hook; GitHub secret scanning and push protection are enabled in repo settings.
+- **Least privilege.** Separate, scoped tokens for the nightly batch (R2 read/write on one bucket, Mapillary upload) and the edge Worker. Rotate on any suspicion; `SECURITY.md` documents how to report a vulnerability privately.
+- **Fork-safe CI.** Nightly batch workflows run only on the main repo and on `schedule`/`workflow_dispatch`; they never run on `pull_request` from forks, and use no `pull_request_target` with checkout of PR code.
+- **Data stays out of git.** `data/`, raw frames, GPS trails, user tables, DB snapshots and model weights are gitignored. Only curated, licensed seeds (e.g. black-spot CSV) and published, de-identified snapshots may be committed.
+- **Abuse resistance of a public API.** Rate limits and size caps at the edge, Google ID token verification on every write, and per-user daily upload caps, since anyone can read the client code.
