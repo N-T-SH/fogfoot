@@ -1,6 +1,8 @@
 # Dots concept (replaces "fog" at walking scale)
 
-Status: **prototype, concept under evaluation.** Try it at `/#/dots` (demo data: 280 real kerb units around Koramangala, 25.8 km, 2,598 dots).
+Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default demo: 790 real kerb units around Domlur, 70.7 km, 7,095 dots; `/#/dots?area=koramangala` for the Koramangala set).
+
+Look: a light basemap with orange dots (white halo so they read on any map), red pulsing power pellets for hotspots, a faint green trail where dots were eaten, and a walking-person silhouette whose stride follows distance walked. Only the *dot-eating idea* is borrowed from Pac-Man, not its look.
 
 ## The idea
 Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking the footpath eats the dots you pass. Dots regrow after `fog_decay_days` (60). Unit progress and ward coverage are just "share of dots eaten". Zoomed out, per-unit lines glow in proportion to progress (the fog overview survives as the city-scale view).
@@ -19,7 +21,7 @@ Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking 
 ## Why it could work
 - **It fixes a real capture problem.** Eyes-up capture fails silently if the phone stops sampling. A dot disappearing (plus a short haptic tick on Android) is instant proof that capture works, without looking at the screen for long.
 - Reads at a glance, no tutorial.
-- Cheap to draw: one canvas, no basemap needed (the dark "maze" is the map), 2.6k dots for 26 km. Dots are generated on the device from unit geometry, so they are never downloaded. Demo data is 33 KB; the lazily loaded chunk is 48 KB gzipped (Leaflet included).
+- Cheap to draw: one canvas over the map, about 7k dots for 71 km. Dots are generated on the device from unit geometry, so they are never downloaded. Demo data is 97 KB for Domlur (33 KB for Koramangala); the lazily loaded chunk is about 48 KB gzipped (Leaflet included).
 
 ## Open design questions
 1. **Personal or shared?** In the prototype eaten dots are personal (saved on the phone). The compliance project needs a *shared* city freshness map. Suggested split: dots are "your trail"; the city-wide freshness layer (the old fog) stays for the shared overview at low zoom.
@@ -28,7 +30,7 @@ Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking 
 4. **Shared streets** (narrow lanes) have one centreline trail instead of two kerb trails; shown dashed.
 
 ## Risks
-- **Look-alike risk.** Dots + power pellets + dark maze strongly evoke Pac-Man (Bandai Namco). The prototype avoids the pie-chart character, ghosts and the "waka" sound, using an original puff avatar. Anything further should keep that distance: no chomping mouth, no ghosts, no yellow-on-blue-with-cherries styling. Worth a quick legal opinion before launch (not obtained).
+- **Look-alike risk.** Eating dots along a path is the borrowed mechanic. The look is deliberately different: light basemap, a walking person instead of a chomping character, no ghosts, no maze styling, no "waka" sound. Keep that distance. Worth a quick legal opinion before launch (not obtained).
 - **Safety.** A game next to Bengaluru traffic. Rules to keep: never put dots on carriageways or crossings; no timers, chases or streaks; the app must work screen-off (haptics, optional audio); pause gameplay above walking speed (vehicle).
 - **Farming.** Pacing back and forth to eat regrown dots. Counter with the 60-day regrowth, small per-dot points, and the existing anti-cheat.
 - **Scale.** Whole-city dots would be about 600k at 10 m. Draw dots only at zoom 16 and closer, from tiles; use aggregated lines below that.
@@ -37,4 +39,4 @@ Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking 
 "Fog of walk" no longer fits. Ideas if the concept holds: *kolam* (dot patterns completed by walking: culturally rooted and not a game trademark), *pulli* (Tamil/Kannada-adjacent word for the kolam dot), *footprint*, *trail*, *petals* (marigold-coloured dots). Pick after the concept is confirmed.
 
 ## Prototype controls
-Simulate walk (random route over real kerb units, speed ×6/12/24), Use my GPS (only counts inside the demo area), +30 days (fast-forward the clock to see regrowth), Street map (optional dimmed OpenStreetMap tiles; the default is no tiles), Reset.
+Simulate walk (random route over real kerb units, speed ×6/12/24), Use my GPS (only counts inside the demo area), +30 days (fast-forward the clock to see regrowth), Street map (on by default; OpenStreetMap tiles for the prototype only, the real app uses its own tiles), Reset.
