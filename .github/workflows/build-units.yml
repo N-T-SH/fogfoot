@@ -33,13 +33,20 @@ jobs:
       - run: pip install -e "backend[dev]"
       - name: Unit tests
         run: pytest backend -q
+      - name: Restore cached OSM downloads
+        uses: actions/cache@v4
+        with:
+          path: data/osm
+          key: osm-${{ hashFiles('config/settings.yaml') }}
       - name: Build kerb units
-        run: fogfoot build-units --pilot ${{ inputs.force && '--force' || '' }} | tee build-units.log
+        shell: bash   # bash with pipefail, so a failure of fogfoot is not hidden by `tee`
+        run: fogfoot build-units --pilot ${{ inputs.force && '--force' || '' }} 2>&1 | tee build-units.log
       - name: Publish to data branch
         run: |
           mkdir -p /tmp/out/osm
           cp data/units.geojson /tmp/out/
-          cp data/osm/*.json /tmp/out/osm/
+          cp data/osm/overpass_*.json /tmp/out/osm/
+          gzip -9 -c data/osm/buildings_*.json > /tmp/out/osm/buildings.json.gz
           cp build-units.log /tmp/out/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

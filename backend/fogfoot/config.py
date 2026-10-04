@@ -18,10 +18,25 @@ class PilotCfg(BaseModel):
 
 
 class OsmCfg(BaseModel):
-    overpass_url: str = "https://overpass-api.de/api/interpreter"
+    # Tried in order, rotating on rate limits / timeouts / errors.
+    overpass_urls: list[str] = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    ]
+    retry_waits_s: list[int] = [15, 30, 60, 90, 120]
     user_agent: str = "fogfoot/0.1"
     cache_dir: str = "data/osm"
     timeout_s: int = 180
+
+
+class SharedStreetsCfg(BaseModel):
+    enabled: bool = True
+    candidate_highway: list[str] = ["residential", "living_street", "unclassified"]
+    max_gap_m: float = 8.0
+    probe_m: float = 12
+    sample_every_m: float = 8
+    min_both_sides_fraction: float = 0.5
 
 
 class UnitsCfg(BaseModel):
@@ -30,6 +45,7 @@ class UnitsCfg(BaseModel):
     median_search_m: float = 30             # how far to look for the opposing carriageway
     median_min_overlap: float = 0.5         # fraction of the kerb that must run alongside it
     median_min_antiparallel_deg: float = 150
+    shared_streets: SharedStreetsCfg = Field(default_factory=SharedStreetsCfg)
     length_m: float = 100
     min_length_m: float = 30
     kerb_offset_by_highway: dict[str, float]

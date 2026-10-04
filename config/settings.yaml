@@ -8,7 +8,11 @@ pilot:
   bbox_buffer_m: 200
 
 osm:
-  overpass_url: https://overpass-api.de/api/interpreter
+  overpass_urls:                  # tried in order; rotates on rate limits, timeouts and errors
+    - https://overpass-api.de/api/interpreter
+    - https://overpass.private.coffee/api/interpreter
+    - https://overpass.kumi.systems/api/interpreter
+  retry_waits_s: [15, 30, 60, 90, 120]
   user_agent: "fogfoot/0.1 (civic footpath mapping; https://github.com/N-T-SH/fogfoot)"
   cache_dir: data/osm
   timeout_s: 180
@@ -19,6 +23,16 @@ units:
   median_search_m: 30
   median_min_overlap: 0.5
   median_min_antiparallel_deg: 150
+  # Narrow lanes have no room for footpaths, so the two kerbs collapse into one shared-street unit
+  # (side "C", on the centreline). OSM has almost no width data (0.3% of residential km), so width is
+  # measured as the gap between building footprints on either side of the lane.
+  shared_streets:
+    enabled: true
+    candidate_highway: [residential, living_street, unclassified]
+    max_gap_m: 8.0              # median face-to-face gap between buildings; wider streets keep two kerbs
+    probe_m: 12                 # how far to look for a building on each side
+    sample_every_m: 8
+    min_both_sides_fraction: 0.5  # samples with a building on both sides, as a share of all samples
   length_m: 100
   min_length_m: 30
   kerb_offset_by_highway:

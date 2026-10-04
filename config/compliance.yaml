@@ -4,7 +4,10 @@ source:
   supplementary_standards:
     - "IRC guidance on minimum clear width (~1.8 m) — verify edition"
 
-statuses: [compliant, non_compliant, no_footpath, unknown]
+statuses: [compliant, non_compliant, no_footpath, unknown, shared_street]
+# shared_street: units with kind=shared (narrow lanes, no room for a footpath). Pedestrians and vehicles share
+# the carriageway, so the footpath criteria below do not apply; criteria for shared units (obstruction, surface,
+# vehicle speed/volume cues) are to be defined with local input.
 
 criteria:                     # each maps to rubric checks
   duty_to_provide:
