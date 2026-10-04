@@ -15,7 +15,10 @@ osm:
 
 units:
   projected_crs: EPSG:32643       # UTM 43N, metres
-  drop_median_side: true          # on one-way carriageways, skip the kerb facing an opposing carriageway
+  drop_median_side: true          # on one-way carriageways, skip the kerb facing an opposing carriageway of the same road
+  median_search_m: 30
+  median_min_overlap: 0.5
+  median_min_antiparallel_deg: 150
   length_m: 100
   min_length_m: 30
   kerb_offset_by_highway:
