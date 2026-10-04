@@ -1,0 +1,10 @@
+# Gitleaks config for fogfoot.
+title = "fogfoot gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public GBA ward identifiers in generated data files are not secrets"
+# The generic-api-key rule matches the `ward_key` field in units.geojson (values like ward_369_final.67).
+regexes = ['''ward_369_final\.\d+''']
