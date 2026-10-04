@@ -18,16 +18,8 @@ export function bearingDeg(a: { lat: number; lon: number }, b: { lat: number; lo
 export interface GateResult { sharpness: number; luma: number; ok: boolean; reason?: "blurry" | "dark"; drawMs: number; readMs: number; computeMs: number }
 export interface GateCfg { minSharpness: number; minLuma: number }
 
-/** Laplacian variance + mean luma on a small grayscale copy. No ML. */
-export function qualityGate(src: CanvasImageSource, cfg: GateCfg, scratch: HTMLCanvasElement): GateResult {
-  const W = 160, H = 90;
-  const t0 = performance.now();
-  scratch.width = W; scratch.height = H;
-  const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(src, 0, 0, W, H);
-  const t1 = performance.now();
-  const px = ctx.getImageData(0, 0, W, H).data;
-  const t2 = performance.now();
+/** Laplacian variance + mean luma on a grayscale copy, from raw RGBA pixels. No ML. Usable on or off the main thread. */
+export function gateFromPixels(px: Uint8ClampedArray, W: number, H: number, cfg: GateCfg): Pick<GateResult, "sharpness" | "luma" | "ok" | "reason"> {
   const g = new Float32Array(W * H);
   let sum = 0;
   for (let i = 0, j = 0; i < px.length; i += 4, j++) {
@@ -42,11 +34,24 @@ export function qualityGate(src: CanvasImageSource, cfg: GateCfg, scratch: HTMLC
     s += l; s2 += l * l; n++;
   }
   const sharpness = s2 / n - (s / n) ** 2;
+  if (luma < cfg.minLuma) return { sharpness, luma, ok: false, reason: "dark" };
+  if (sharpness < cfg.minSharpness) return { sharpness, luma, ok: false, reason: "blurry" };
+  return { sharpness, luma, ok: true };
+}
+
+/** Main-thread gate (legacy path, kept for A/B comparison with the worker via ?worker=0). */
+export function qualityGate(src: CanvasImageSource, cfg: GateCfg, scratch: HTMLCanvasElement): GateResult {
+  const W = 160, H = 90;
+  const t0 = performance.now();
+  scratch.width = W; scratch.height = H;
+  const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0, W, H);
+  const t1 = performance.now();
+  const px = ctx.getImageData(0, 0, W, H).data;
+  const t2 = performance.now();
+  const r = gateFromPixels(px, W, H, cfg);
   const t3 = performance.now();
-  const timing = { drawMs: t1 - t0, readMs: t2 - t1, computeMs: t3 - t2 };
-  if (luma < cfg.minLuma) return { sharpness, luma, ok: false, reason: "dark", ...timing };
-  if (sharpness < cfg.minSharpness) return { sharpness, luma, ok: false, reason: "blurry", ...timing };
-  return { sharpness, luma, ok: true, ...timing };
+  return { ...r, drawMs: t1 - t0, readMs: t2 - t1, computeMs: t3 - t2 };
 }
 
 export async function envReport(): Promise<Record<string, string>> {

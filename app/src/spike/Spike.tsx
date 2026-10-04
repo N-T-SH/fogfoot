@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { angleDiffDeg, bearingDeg, cameraHeadingDeg, cfgFromUrl, envReport, haversineM, qualityGate } from "./measure";
 import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
+import type { EncodeReq, EncodeRes } from "./encode.worker";
 
 // Spike A: measure whether eyes-up PWA capture is viable on low-end Android and iOS.
 // Defaults mirror config/settings.yaml `capture:`; tune from the exported report.
@@ -18,12 +19,13 @@ interface Stats {
   gpsFixes: number; lastFixAt: number | null; fixGapsMs: number[]; busySkips: number;
   hiddenCount: number; wakeLock: string; persist: string;
   headingDiffFormula: number[]; headingDiffAlphaOnly: number[];
+  mode: string; bitmapMs: number[]; roundtripMs: number[];
 }
 const fresh = (): Stats => ({
   kept: 0, blurry: 0, dark: 0, badGps: 0, gateMs: [], encodeMs: [], bytes: 0, longTasks: 0,
   gpsAcc: null, headingSource: "none", distanceM: 0, startedAt: null, startBattery: null, battery: null, heapMB: null,
   gateDrawMs: [], gateReadMs: [], gateComputeMs: [], gpsFixes: 0, lastFixAt: null, fixGapsMs: [], busySkips: 0,
-  hiddenCount: 0, wakeLock: "not requested", persist: "not requested", headingDiffFormula: [], headingDiffAlphaOnly: []
+  hiddenCount: 0, wakeLock: "not requested", persist: "not requested", headingDiffFormula: [], headingDiffAlphaOnly: [], mode: "main_thread", bitmapMs: [], roundtripMs: []
 });
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const pct = (a: number[], p: number) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
@@ -106,6 +108,25 @@ export function Spike() {
       // 8. GPS-driven sampler.
       const scratch = document.createElement("canvas");
       const out = document.createElement("canvas");
+
+      // Worker pipeline (default): main thread only grabs a downscaled ImageBitmap; gate + JPEG encode run in a worker.
+      // Falls back to the main-thread path if unsupported, errors, or ?worker=0.
+      let workerOk = new URLSearchParams(location.search).get("worker") !== "0" &&
+        typeof Worker !== "undefined" && "OffscreenCanvas" in window && typeof createImageBitmap === "function";
+      let worker: Worker | null = null;
+      const pending = new Map<number, (r: EncodeRes) => void>();
+      let reqId = 0;
+      if (workerOk) {
+        try {
+          worker = new Worker(new URL("./encode.worker.ts", import.meta.url), { type: "module" });
+          worker.onmessage = (ev: MessageEvent<EncodeRes>) => { pending.get(ev.data.id)?.(ev.data); pending.delete(ev.data.id); };
+          worker.onerror = () => { pending.forEach((f, id) => f({ id, error: "worker crashed" })); pending.clear(); };
+          cleanups.push(() => worker?.terminate());
+          s.mode = "worker";
+        } catch { workerOk = false; }
+      }
+      const callWorker = (req: Omit<EncodeReq, "id">, transfer: Transferable[]) =>
+        new Promise<EncodeRes>((resolve) => { const id = ++reqId; pending.set(id, resolve); worker!.postMessage({ ...req, id }, transfer); });
       let last: { lat: number; lon: number } | null = null;
       let prev: { lat: number; lon: number } | null = null;
       let course: number | null = null;
@@ -130,16 +151,36 @@ export function Spike() {
         if (busy || v.videoWidth === 0) { if (busy) st.busySkips++; return; }
         busy = true;
         try {
-          const t0 = performance.now();
-          const gate = qualityGate(v, { minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, scratch);
-          st.gateMs.push(performance.now() - t0);
-          st.gateDrawMs.push(gate.drawMs); st.gateReadMs.push(gate.readMs); st.gateComputeMs.push(gate.computeMs);
-          if (!gate.ok) { if (gate.reason === "dark") st.dark++; else st.blurry++; return; }
-          const t1 = performance.now();
-          const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
-          out.width = w; out.height = h; out.getContext("2d")!.drawImage(v, 0, 0, w, h);
-          const blob: Blob = await new Promise((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error("encode"))), "image/jpeg", CFG.jpegQuality));
-          st.encodeMs.push(performance.now() - t1);
+          let blob: Blob;
+          const tStart = performance.now();
+          if (workerOk) {
+            const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
+            let bitmap: ImageBitmap;
+            try { bitmap = await createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: "low" }); }
+            catch { bitmap = await createImageBitmap(v); }
+            st.bitmapMs.push(performance.now() - tStart);
+            const res = await callWorker({ bitmap, maxWidth: CFG.maxWidth, quality: CFG.jpegQuality, minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, [bitmap]);
+            st.roundtripMs.push(performance.now() - tStart);
+            if (res.error || !res.gate) {
+              workerOk = false; st.mode = "main_thread (worker failed)"; setMsg(`Worker failed (${res.error}); using main thread.`);
+              return;
+            }
+            st.gateMs.push(res.gateMs ?? 0);
+            if (!res.gate.ok) { if (res.gate.reason === "dark") st.dark++; else st.blurry++; return; }
+            st.encodeMs.push(res.encodeMs ?? 0);
+            blob = res.blob!;
+          } else {
+            const gate = qualityGate(v, { minSharpness: CFG.minSharpness, minLuma: CFG.minLuma }, scratch);
+            st.gateMs.push(performance.now() - tStart);
+            st.gateDrawMs.push(gate.drawMs); st.gateReadMs.push(gate.readMs); st.gateComputeMs.push(gate.computeMs);
+            if (!gate.ok) { if (gate.reason === "dark") st.dark++; else st.blurry++; return; }
+            const t1 = performance.now();
+            const w = Math.min(CFG.maxWidth, v.videoWidth), h = Math.round((w * v.videoHeight) / v.videoWidth);
+            out.width = w; out.height = h; out.getContext("2d")!.drawImage(v, 0, 0, w, h);
+            blob = await new Promise<Blob>((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error("encode"))), "image/jpeg", CFG.jpegQuality));
+            st.encodeMs.push(performance.now() - t1);
+            st.roundtripMs.push(performance.now() - tStart);
+          }
           const heading = compass ?? course;
           st.headingSource = compass != null ? "compass" : course != null ? "gps_course" : "none";
           await putFrame({ at: Date.now(), lat: cur.lat, lon: cur.lon, acc: p.coords.accuracy, heading, blob });
@@ -172,6 +213,11 @@ export function Spike() {
       headingVsGpsCourseDeg: {
         samples: st.headingDiffFormula.length,
         cameraFormulaMedian: +pct(st.headingDiffFormula, 0.5).toFixed(0), alphaOnlyMedian: +pct(st.headingDiffAlphaOnly, 0.5).toFixed(0)
+      },
+      pipeline: {
+        mode: st.mode, bitmapMsAvg: +avg(st.bitmapMs).toFixed(1),
+        roundtripMsAvg: +avg(st.roundtripMs).toFixed(1), roundtripMsP95: +pct(st.roundtripMs, 0.95).toFixed(1),
+        note: "in worker mode gateMs/encodeMs are worker-side; main-thread jank is shown by longTasks"
       },
       wakeLock: st.wakeLock, persist: st.persist, pageHiddenCount: st.hiddenCount,
       encodeMs: { avg: +avg(st.encodeMs).toFixed(1), p95: +pct(st.encodeMs, 0.95).toFixed(1) },
@@ -208,6 +254,7 @@ export function Spike() {
         <tr><td>Gate split draw / read / compute</td><td>{avg(stats.gateDrawMs).toFixed(0)} / {avg(stats.gateReadMs).toFixed(0)} / {avg(stats.gateComputeMs).toFixed(0)} ms</td></tr>
         <tr><td>Heading vs GPS course (median °)</td><td>{pct(stats.headingDiffFormula, 0.5).toFixed(0)} (naive {pct(stats.headingDiffAlphaOnly, 0.5).toFixed(0)})</td></tr>
         <tr><td>Wake lock</td><td>{stats.wakeLock}</td></tr>
+        <tr><td>Pipeline</td><td>{stats.mode} · round trip {avg(stats.roundtripMs).toFixed(0)} ms</td></tr>
         <tr><td>Encode ms avg / p95</td><td>{avg(stats.encodeMs).toFixed(1)} / {pct(stats.encodeMs, 0.95).toFixed(1)}</td></tr>
         <tr><td>Avg frame size</td><td>{stats.kept ? Math.round(stats.bytes / stats.kept / 1024) : 0} KB</td></tr>
         <tr><td>Long tasks (jank)</td><td>{stats.longTasks}</td></tr>
