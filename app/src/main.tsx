@@ -4,4 +4,8 @@ import "./style.css";
 import { Spike } from "./spike/Spike";
 
 registerSW({ immediate: true });
-render(<Spike />, document.getElementById("app")!);
+
+// Tiny hash router. The dots concept lives in its own lazily loaded chunk so the main bundle stays small.
+const root = document.getElementById("app")!;
+if (location.hash === "#/dots") import("./dots/DotsMap").then((m) => m.mountDots(root));
+else render(<Spike />, root);

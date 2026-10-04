@@ -1,0 +1,14 @@
+.dots-root { position: fixed; inset: 0; background: #05060f; color: #f5f0e6; font: 15px/1.35 system-ui, sans-serif; }
+.dots-root .leaflet-container { background: #05060f; }
+.dots-canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+.dim-tiles { filter: invert(1) hue-rotate(200deg) brightness(.55) contrast(.9) saturate(.5); }
+.dots-hud { position: absolute; z-index: 1000; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  background: linear-gradient(#05060fee, #05060f00); pointer-events: none; }
+.dots-hud h1 { margin: 0; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: #ffb300; font-weight: 700; }
+.dots-hud .big { font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.dots-hud .sub { color: #9aa3c7; font-size: 13px; }
+.dots-bar { position: absolute; z-index: 1000; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; flex-wrap: wrap; gap: 8px; background: linear-gradient(#05060f00, #05060fee 40%); }
+.dots-bar button { min-height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #2a3470; background: #0d1340; color: #f5f0e6; font-size: 15px; }
+.dots-bar button.on { background: #ffb300; color: #1a1200; border-color: #ffb300; font-weight: 700; }
+.dots-msg { position: absolute; z-index: 1000; left: 14px; right: 14px; top: 96px; color: #ff9a9a; font-size: 13px; pointer-events: none; }

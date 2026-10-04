@@ -84,6 +84,8 @@ Enforced in CI with Lighthouse CI and Playwright (Chromium with 4× CPU throttle
 
 **First users.** Commuters and early tech adopters in the Indiranagar / Koramangala / HSR Layout cluster.
 
+**Dots (concept under evaluation).** The walking-scale game view may replace the fog metaphor with a trail of dots per unit that you eat by walking, regrowing after `fog_decay_days`; the fog-like per-unit glow remains as the zoomed-out overview. See `docs/DOTS_CONCEPT.md` and the prototype at `/#/dots`.
+
 **Shared streets.** Lanes too narrow for a carriageway plus footpaths have one unit on the centreline (`side = C`, `kind = shared`) instead of a left and a right kerb. OSM has almost no width data (0.3% of residential km carry a `width` tag), so narrowness is measured as the median face-to-face gap between building footprints on both sides of the lane (`units.shared_streets` in `config/settings.yaml`; default 8 m). Shared units are assessed against a different rule set from kerb units (pedestrian-vehicle conflict, obstruction, surface), not the footpath criteria. Threshold and rules to be tuned with local knowledge.
 
 **Two layers, never merged.**
