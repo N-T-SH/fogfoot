@@ -53,16 +53,21 @@ def offset_kerbs(roads: gpd.GeoDataFrame, cfg: Settings) -> gpd.GeoDataFrame:
             if kerb is None or kerb.is_empty:
                 continue
             median = False
-            if u.drop_median_side and row["oneway"] and osidx is not None:
-                # A oneway way driven on the left (India): the right kerb faces the median.
-                if side == "R":
-                    near = oneways.iloc[list(osidx.query(kerb.buffer(10), predicate="intersects"))]
-                    for j, o in near.iterrows():
-                        if j == i or o["osm_way_id"] == row["osm_way_id"]:
-                            continue
-                        if _angle_diff(_bearing(row.geometry), _bearing(o.geometry)) > 120 and kerb.distance(o.geometry) < 8:
-                            median = True
-                            break
+            if u.drop_median_side and row["oneway"] and osidx is not None and side == "R" and row["name"]:
+                # Driving is on the left in India, so a oneway way's right kerb faces the median. It is a
+                # median kerb only if an opposing carriageway of the *same road* runs alongside it.
+                near = oneways.iloc[list(osidx.query(kerb.buffer(u.median_search_m), predicate="intersects"))]
+                for j, o in near.iterrows():
+                    if j == i or o["osm_way_id"] == row["osm_way_id"]:
+                        continue
+                    if o["name"] != row["name"] or o["highway"] != row["highway"]:
+                        continue
+                    if _angle_diff(_bearing(row.geometry), _bearing(o.geometry)) < u.median_min_antiparallel_deg:
+                        continue
+                    alongside = kerb.intersection(o.geometry.buffer(u.median_search_m)).length / max(kerb.length, 1e-6)
+                    if alongside >= u.median_min_overlap:
+                        median = True
+                        break
             if median:
                 continue
             for ln in _lines(line_merge(kerb) if kerb.geom_type == "MultiLineString" else kerb):

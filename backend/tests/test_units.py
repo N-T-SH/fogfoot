@@ -100,3 +100,22 @@ def test_pilot_ward_patterns_match_whole_words_only():
                              geometry=[Polygon()] * 5, crs=4326)
     got = set(pilot_wards(wards, ["Agara", "Kormangala", "HSR Layout"])["ward_name"])
     assert got == {"Agara", "Kormangala East", "HSR Layout"}
+
+
+def test_wide_median_is_still_detected():
+    east = _road([(X0, Y0), (X0 + 300, Y0)], 10, "primary", oneway=True)
+    west = _road([(X0 + 300, Y0 - 26), (X0, Y0 - 26)], 11, "primary", oneway=True)   # 26 m apart
+    kerbs = offset_kerbs(_roads(east, west), CFG)
+    assert sorted(zip(kerbs.osm_way_id, kerbs.side)) == [(10, "L"), (11, "L")]
+
+
+def test_paired_oneway_side_streets_with_different_names_keep_both_kerbs():
+    a = _road([(X0, Y0), (X0 + 300, Y0)], 20, "residential", oneway=True, name="1st Cross")
+    b = _road([(X0 + 300, Y0 - 25), (X0, Y0 - 25)], 21, "residential", oneway=True, name="2nd Cross")
+    assert len(offset_kerbs(_roads(a, b), CFG)) == 4
+
+
+def test_unnamed_oneway_keeps_both_kerbs():
+    a = _road([(X0, Y0), (X0 + 300, Y0)], 30, "primary", oneway=True, name=None)
+    b = _road([(X0 + 300, Y0 - 14), (X0, Y0 - 14)], 31, "primary", oneway=True, name=None)
+    assert len(offset_kerbs(_roads(a, b), CFG)) == 4

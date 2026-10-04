@@ -27,6 +27,9 @@ class OsmCfg(BaseModel):
 class UnitsCfg(BaseModel):
     projected_crs: str = "EPSG:32643"
     drop_median_side: bool = True
+    median_search_m: float = 30             # how far to look for the opposing carriageway
+    median_min_overlap: float = 0.5         # fraction of the kerb that must run alongside it
+    median_min_antiparallel_deg: float = 150
     length_m: float = 100
     min_length_m: float = 30
     kerb_offset_by_highway: dict[str, float]
