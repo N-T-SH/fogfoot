@@ -18,7 +18,7 @@ function Gallery() {
   return (
     <main style="padding:16px;max-width:640px;margin:0 auto;background:#f4f1ea;min-height:100vh;color:#1b2330;font:14px system-ui">
       <h1 style="font-size:18px">Litter icons</h1>
-      <p>Low-fidelity, drawn in code, no brand logos. Shown large and at map size (16 px). Game tokens only: they do not mean litter was detected.</p>
+      <p>Low-fidelity flat shapes, drawn in code, no brand logos. Shown large and at map size (16 px). Game tokens only: they do not mean litter was detected.</p>
       <style>{`.cell{display:inline-flex;flex-direction:column;align-items:center;gap:6px;width:130px;margin:6px 4px;padding:10px;background:#fff;border-radius:10px;border:1px solid #ddd}.cell div{font-size:12px;color:#56627a}`}</style>
       <div ref={ref} />
     </main>

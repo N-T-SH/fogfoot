@@ -113,8 +113,9 @@ class DotLayer extends L.Layer {
       };
       paint(old, r, "#a5d6a1"); paint(mid, r, "#5fb865"); paint(fresh, r, "#2e8b3d");   // picked up: darker green = more recently
       ctx.imageSmoothingEnabled = true;
-      for (let i = 0; i < items.length; i += 3) ctx.drawImage(this.sprites.items[items[i + 2]], items[i] - S / 2, items[i + 1] - S / 2, S, S);
-      const H = S * 1.7 * (1 + 0.1 * Math.sin(performance.now() / 260));                 // garbage heaps (hotspots) pulse gently
+      const D = S * this.sprites.scale;                                                     // sprite is slightly larger than the icon: it includes the white edge
+      for (let i = 0; i < items.length; i += 3) ctx.drawImage(this.sprites.items[items[i + 2]], items[i] - D / 2, items[i + 1] - D / 2, D, D);
+      const H = S * 1.9 * this.sprites.scale * (1 + 0.08 * Math.sin(performance.now() / 260));                 // garbage heaps (hotspots) pulse gently
       for (let i = 0; i < heaps.length; i += 3) ctx.drawImage(this.sprites.pile, heaps[i] - H / 2, heaps[i + 1] - H / 2, H, H);
     }
 
