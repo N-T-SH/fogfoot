@@ -154,7 +154,7 @@ fogfoot is a free public-interest service, so the design pushes work to the plac
 
 ### 3.3 India data protection (DPDP Act 2023 and DPDP Rules 2025)
 
-*This is an engineering reading, not legal advice. Have an Indian data-protection lawyer or advisor confirm it before launch; several figures below come from secondary summaries and must be checked against the Rules text.*
+*This is an engineering reading, not legal advice. Decision: no external legal review for the MVP. Several dates below come from secondary summaries, so re-check them against the Rules text before launch.*
 
 **Timeline (to verify).** The Act was passed in 2023. The Rules were notified on 13 Nov 2025 with phased commencement: institutional provisions immediately, Consent Manager rules on 13 Nov 2026, and the main duties (notice, consent, safeguards, breach, erasure, children, rights, penalties) on about 13 May 2027. fogfoot launches before that date, but we build to the 2027 standard from day one: there is no reason to rework later, and a free service handling location trails and photos still carries reputational risk.
 
@@ -166,7 +166,7 @@ fogfoot is a free public-interest service, so the design pushes work to the plac
 1. **Blur before store and before publish** (§3, Spike C). Raw frames live at most 7 days, privately, and are never shown or exported.
 2. **Notice and consent, itemised and plain-language** in English, Kannada and Hindi before first capture: what we collect, why (mapping footpath condition), that blurred frames are published openly on Mapillary, that data is processed by Cloudflare, Google and Mapillary (some outside India), and how to withdraw. Publication to Mapillary is a separate, clearly labelled consent that capture requires; browsing needs none. Withdrawal is as easy as giving consent (a settings button).
 3. **Purpose limitation and minimisation.** Collect only what scoring and game integrity need. Raw GPS trails kept ≤ 90 days, then reduced to unit-level coverage records. No ads, no analytics SDKs, no data sales or sharing; telemetry is opt-in and contains no location.
-4. **Children.** Under-18s need verifiable parental consent under the Act and tracking of children is restricted. Simplest compliant route: **18+ only**, enforced by a self-declaration gate before sign-in, with a clear statement in the terms. Revisit school-zone features only with proper parental consent design.
+4. **Children.** Under-18s need verifiable parental consent under the Act and tracking of children is restricted. Simplest route: the terms state the service is for **18+ only**. Decision: no age verification or self-declaration gate in the MVP (this is a known residual risk; revisit if usage shows minors). Revisit school-zone features only with proper parental consent design.
 5. **Rights and grievance.** In-app "Download my data", "Delete my account and data", correction of handle, and a named grievance contact with a response SLA. Deleting an account removes trails and votes, and removes the user's attribution; already-blurred published frames cannot be recalled from Mapillary, so the notice says so, and a per-frame takedown request path is offered.
 6. **Security safeguards.** Encryption in transit and at rest (R2/D1 defaults), least-privilege tokens, no keys in the repo (§11), access logging on the edge, and a short breach runbook (assess, contain, notify users and the Data Protection Board as the Rules require).
 7. **Retention schedule** documented in `docs/data-retention.md` and enforced by the nightly batch (raw frames 7 days, trails 90 days, ledger records retained for the public record without personal identifiers).
@@ -695,7 +695,7 @@ MVP: weekly hotspots from `issue_clusters`, `suspected_from_fog` and `user_repor
 - **Accept:** evidence pack shows dated frames, criteria failed, issue codes, owner agency and judgment reference.
 
 ### Phase 8 — Public release hardening
-- DPDP compliance checklist in §3.3 completed and reviewed by a lawyer or data-protection advisor before public launch; privacy notice and terms in en/kn/hi.
+- DPDP checklist in §3.3 completed (self-reviewed, no external legal review by decision); privacy notice and terms in en/kn/hi stating 18+ only.
 - Abuse and moderation: report/takedown on any frame, rate limits per device and IP, upload size caps, spam/NSFW check on frames before publication.
 - Web launch: custom domain, HTTPS, install guides for Android and iOS (en/kn/hi), soft launch with a small cohort before announcing. Play Store TWA is a post-MVP follow-up.
 - Real-world validation: 10+ testers on budget Android phones across at least 3 brands, plus at least 3 iPhone users, complete a 2 km walk and a Verify session; collect device class, crash and battery feedback. Fix before public rollout.
@@ -740,10 +740,10 @@ Findings from a first web search (sources could not be opened directly from the 
 
 **Also confirmed:** public repo (nothing sensitive in git, see §11); no funding source for MVP, so the free-tier and scoring-budget design in §3.1–3.2 is mandatory; hotspots use whatever public sources we can find and verify (§8a).
 
+**Decided:** licence is AGPL-3.0 for code and ODbL for published data (add `LICENSE` and `DATA_LICENSE.md`); no external legal review for MVP; no 18+ verification gate (terms state 18+ only).
+
 **Open:**
-- Licence for the public repo. Recommendation: AGPL-3.0 for code (keeps forks of the service open), and an open data licence for published exports (ODbL, matching OpenStreetMap-derived data). Needs your call before the first public push.
-- Lawyer or advisor to review §3.3 before launch (budget a few hours; there are India-based data-protection clinics and pro bono options for civic-tech projects).
-- Confirm 18+ only is acceptable for the MVP audience.
+- None blocking. Phase 0 spikes need real phones and a Mapillary account.
 
 ---
 
