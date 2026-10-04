@@ -39,7 +39,8 @@ jobs:
         run: |
           mkdir -p /tmp/out/osm
           cp data/units.geojson /tmp/out/
-          cp data/osm/*.json /tmp/out/osm/
+          cp data/osm/overpass_*.json /tmp/out/osm/
+          gzip -9 -c data/osm/buildings_*.json > /tmp/out/osm/buildings.json.gz
           cp build-units.log /tmp/out/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

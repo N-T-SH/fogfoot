@@ -119,3 +119,71 @@ def test_unnamed_oneway_keeps_both_kerbs():
     a = _road([(X0, Y0), (X0 + 300, Y0)], 30, "primary", oneway=True, name=None)
     b = _road([(X0 + 300, Y0 - 14), (X0, Y0 - 14)], 31, "primary", oneway=True, name=None)
     assert len(offset_kerbs(_roads(a, b), CFG)) == 4
+
+
+# ---- shared streets (narrow lanes) -------------------------------------------------------------
+
+def _buildings(*boxes):
+    from shapely.geometry import box
+    return gpd.GeoDataFrame(geometry=[box(*b) for b in boxes], crs=CFG.units.projected_crs).to_crs(4326)
+
+
+def _lane_with_buildings(gap, road_id=1, highway="residential", length=240, one_side_only=False):
+    """East-west road along y=Y0 with continuous building rows `gap` metres apart (face to face)."""
+    roads = _roads(_road([(X0, Y0), (X0 + length, Y0)], road_id, highway))
+    rows = [(X0 - 10, Y0 + gap / 2, X0 + length + 10, Y0 + gap / 2 + 8)]
+    if not one_side_only:
+        rows.append((X0 - 10, Y0 - gap / 2 - 8, X0 + length + 10, Y0 - gap / 2))
+    return roads, _buildings(*rows)
+
+
+def test_narrow_lane_becomes_one_shared_unit_per_100m_on_the_centreline():
+    roads, bld = _lane_with_buildings(gap=5.0)
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG, buildings=bld)
+    assert set(units["side"]) == {"C"} and set(units["kind"]) == {"shared"}
+    assert len(units) == 2                        # 240 m -> round(2.4)=2 pieces, not 4 (2 per side)
+    proj = units.to_crs(CFG.units.projected_crs)
+    assert all(abs(g.centroid.y - Y0) < 0.05 for g in proj.geometry)   # on the centreline, not offset to a kerb
+    assert (units["gap_m"] == 5.0).all()
+    assert set(units["unit_id"]) == {"1_0_C", "1_1_C"}
+
+
+def test_wider_street_keeps_two_kerbs():
+    roads, bld = _lane_with_buildings(gap=14.0)
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG, buildings=bld)
+    assert set(units["side"]) == {"L", "R"} and set(units["kind"]) == {"kerb"}
+
+
+def test_lane_with_buildings_on_one_side_only_is_not_shared():
+    roads, bld = _lane_with_buildings(gap=5.0, one_side_only=True)
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG, buildings=bld)
+    assert set(units["side"]) == {"L", "R"}
+
+
+def test_main_roads_are_never_shared_even_when_hemmed_in():
+    roads, bld = _lane_with_buildings(gap=5.0, highway="secondary")
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG, buildings=bld)
+    assert set(units["side"]) == {"L", "R"}
+
+
+def test_without_building_data_nothing_is_shared():
+    roads, _ = _lane_with_buildings(gap=5.0)
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG)
+    assert set(units["side"]) == {"L", "R"}
+
+
+def test_shared_streets_can_be_disabled():
+    cfg = CFG.model_copy(deep=True); cfg.units.shared_streets.enabled = False
+    roads, bld = _lane_with_buildings(gap=5.0)
+    units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), cfg, buildings=bld)
+    assert set(units["side"]) == {"L", "R"}
+
+
+def test_gap_is_measured_not_assumed_lane_gaps_between_threshold_and_wide():
+    from fogfoot.network.shared import shared_street_gaps
+    ru = _lane_with_buildings(gap=7.5)[0].to_crs(CFG.units.projected_crs)
+    bu = _lane_with_buildings(gap=7.5)[1].to_crs(CFG.units.projected_crs)
+    g = shared_street_gaps(ru, bu, CFG.units.shared_streets)
+    assert g[1] == pytest.approx(7.5, abs=0.2)
+    ru, bu = [d.to_crs(CFG.units.projected_crs) for d in _lane_with_buildings(gap=8.6)]
+    assert shared_street_gaps(ru, bu, CFG.units.shared_streets) == {}   # just over max_gap_m=8.0

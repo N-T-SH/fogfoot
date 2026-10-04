@@ -7,7 +7,7 @@ import geopandas as gpd
 import typer
 
 from .config import load_settings
-from .network.osm import load_roads
+from .network.osm import load_buildings, load_roads
 from .network.units import build_units
 from .network.wards import load_wards, pilot_wards
 
@@ -35,11 +35,16 @@ def build_units_cmd(
     bbox = tuple(gpd.GeoSeries([area], crs=proj.crs).to_crs(4326).total_bounds)
     roads = load_roads(cfg, bbox, force)  # type: ignore[arg-type]
     typer.echo(f"{len(roads)} OSM ways; {roads.attrs.get('separate_sidewalk_ways', 0)} separate sidewalk ways mapped")
-    units = build_units(roads, sel, cfg)
+    buildings = load_buildings(cfg, bbox, force) if cfg.units.shared_streets.enabled else None  # type: ignore[arg-type]
+    if buildings is not None:
+        typer.echo(f"{len(buildings)} building footprints")
+    units = build_units(roads, sel, cfg, buildings=buildings)
     path = cfg.data_path(out)
     units.to_crs(4326).to_file(path, driver="GeoJSON")
     stats = {
         "units": len(units), "total_km": round(units["length_m"].sum() / 1000, 1),
+        "by_kind_km": units.groupby("kind")["length_m"].sum().div(1000).round(1).to_dict(),
+        "shared_units": int((units["kind"] == "shared").sum()),
         "by_highway": units.groupby("highway")["length_m"].sum().div(1000).round(1).to_dict(),
         "by_ward_km": units.groupby("ward_name")["length_m"].sum().div(1000).round(1).to_dict(),
     }

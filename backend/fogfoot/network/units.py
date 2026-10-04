@@ -10,6 +10,7 @@ from shapely.geometry import LineString, MultiLineString
 from shapely.ops import substring
 
 from ..config import Settings
+from .shared import shared_street_gaps
 
 
 def _lines(geom) -> list[LineString]:
@@ -34,13 +35,17 @@ def _angle_diff(a: float, b: float) -> float:
     return 360 - d if d > 180 else d
 
 
-def offset_kerbs(roads: gpd.GeoDataFrame, cfg: Settings) -> gpd.GeoDataFrame:
+def offset_kerbs(roads: gpd.GeoDataFrame, cfg: Settings, shared: dict[int, float] | None = None) -> gpd.GeoDataFrame:
     """Offset each way to a left (L) and right (R) kerb line, in the projected CRS.
 
     Sides are relative to the way's digitised direction. On one-way carriageways that sit across a median
     from an opposing carriageway (typical dual carriageways mapped as two ways), the median-facing kerb is
     dropped when `drop_median_side` is set: nobody walks on a median, and keeping it duplicates kerb length.
+
+    Ways listed in `shared` (osm_way_id -> measured gap) are narrow lanes with no room for footpaths: they get a
+    single unit on the centreline (side "C") instead of a left and a right kerb.
     """
+    shared = shared or {}
     u = cfg.units
     r = roads.to_crs(u.projected_crs).reset_index(drop=True)
     oneways = r[r["oneway"]]
@@ -48,6 +53,11 @@ def offset_kerbs(roads: gpd.GeoDataFrame, cfg: Settings) -> gpd.GeoDataFrame:
     out = []
     for i, row in r.iterrows():
         d = u.offset_for(row["highway"])
+        if int(row["osm_way_id"]) in shared:
+            for ln in _lines(row.geometry):
+                out.append({**row.drop("geometry").to_dict(), "side": "C", "offset_m": 0.0, "kind": "shared",
+                            "gap_m": shared[int(row["osm_way_id"])], "geometry": ln})
+            continue
         for side, sign in (("L", 1), ("R", -1)):
             kerb = row.geometry.offset_curve(sign * d, join_style="round", quad_segs=4)
             if kerb is None or kerb.is_empty:
@@ -71,7 +81,7 @@ def offset_kerbs(roads: gpd.GeoDataFrame, cfg: Settings) -> gpd.GeoDataFrame:
             if median:
                 continue
             for ln in _lines(line_merge(kerb) if kerb.geom_type == "MultiLineString" else kerb):
-                out.append({**row.drop("geometry").to_dict(), "side": side, "offset_m": d, "geometry": ln})
+                out.append({**row.drop("geometry").to_dict(), "side": side, "offset_m": d, "kind": "kerb", "gap_m": None, "geometry": ln})
     return gpd.GeoDataFrame(out, geometry="geometry", crs=u.projected_crs)
 
 
@@ -96,7 +106,7 @@ def split_units(kerbs: gpd.GeoDataFrame, cfg: Settings) -> gpd.GeoDataFrame:
             rows.append({
                 "unit_id": f"{k['osm_way_id']}_{s}_{k['side']}",
                 "osm_way_id": k["osm_way_id"], "side": k["side"], "highway": k["highway"], "name": k["name"],
-                "oneway": k["oneway"], "sidewalk_tag": k["sidewalk_tag"],
+                "oneway": k["oneway"], "sidewalk_tag": k["sidewalk_tag"], "kind": k["kind"], "gap_m": k["gap_m"],
                 "length_m": round(piece.length, 1), "geometry": piece,
             })
     return gpd.GeoDataFrame(rows, geometry="geometry", crs=kerbs.crs)
@@ -112,8 +122,14 @@ def assign_wards(units: gpd.GeoDataFrame, wards: gpd.GeoDataFrame) -> gpd.GeoDat
     return gpd.GeoDataFrame(out, geometry="geometry", crs=units.crs)
 
 
-def build_units(roads: gpd.GeoDataFrame, wards: gpd.GeoDataFrame, cfg: Settings, clip_to_wards: bool = True) -> gpd.GeoDataFrame:
-    kerbs = offset_kerbs(roads, cfg)
+def build_units(roads: gpd.GeoDataFrame, wards: gpd.GeoDataFrame, cfg: Settings, clip_to_wards: bool = True,
+                buildings: gpd.GeoDataFrame | None = None) -> gpd.GeoDataFrame:
+    """Kerb units for every road; narrow lanes (measured from `buildings`, if given) become one shared unit."""
+    shared: dict[int, float] = {}
+    if buildings is not None and cfg.units.shared_streets.enabled:
+        shared = shared_street_gaps(roads.to_crs(cfg.units.projected_crs), buildings.to_crs(cfg.units.projected_crs),
+                                    cfg.units.shared_streets)
+    kerbs = offset_kerbs(roads, cfg, shared)
     units = assign_wards(split_units(kerbs, cfg), wards)
     if clip_to_wards:
         units = units[units["ward_key"].notna()].reset_index(drop=True)

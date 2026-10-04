@@ -84,6 +84,8 @@ Enforced in CI with Lighthouse CI and Playwright (Chromium with 4× CPU throttle
 
 **First users.** Commuters and early tech adopters in the Indiranagar / Koramangala / HSR Layout cluster.
 
+**Shared streets.** Lanes too narrow for a carriageway plus footpaths have one unit on the centreline (`side = C`, `kind = shared`) instead of a left and a right kerb. OSM has almost no width data (0.3% of residential km carry a `width` tag), so narrowness is measured as the median face-to-face gap between building footprints on both sides of the lane (`units.shared_streets` in `config/settings.yaml`; default 8 m). Shared units are assessed against a different rule set from kerb units (pedestrian-vehicle conflict, obstruction, surface), not the footpath criteria. Threshold and rules to be tuned with local knowledge.
+
 **Two layers, never merged.**
 - **Game layer = freshness.** Fog clears when a unit is captured and regrows after `fog_decay_days`. Points follow freshness, hotspots and verification.
 - **Compliance layer = condition.** Each 100 m kerb unit is marked against the Supreme Court standard (compliant / non-compliant / no footpath / unknown) with the specific issues listed. Players are never rewarded for a unit being compliant.
@@ -504,8 +506,9 @@ finetune:
 CREATE TABLE wards (ward_id TEXT PRIMARY KEY, name TEXT, corporation TEXT, geom MULTIPOLYGON);
 
 CREATE TABLE units (
-  unit_id TEXT PRIMARY KEY,            -- {osm_way}_{seq}_{L|R}
-  osm_way_id INTEGER, side TEXT CHECK(side IN ('L','R')),
+  unit_id TEXT PRIMARY KEY,            -- {osm_way}_{seq}_{L|R|C}
+  osm_way_id INTEGER, side TEXT CHECK(side IN ('L','R','C')),   -- C = shared street (narrow lane), on the centreline
+  kind TEXT CHECK(kind IN ('kerb','shared')), gap_m REAL,        -- gap_m: measured building-to-building width for shared streets
   highway TEXT, ward_id TEXT REFERENCES wards,
   owner_agency TEXT, length_m REAL, geom LINESTRING
 );
