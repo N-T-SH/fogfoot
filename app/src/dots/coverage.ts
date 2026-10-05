@@ -1,8 +1,12 @@
 // Shared dot coverage, client side. A dot is "covered" if anyone walked it in the last WINDOW_DAYS.
 // Your own walks are saved on the device immediately; shared ones sync with /api/coverage when online.
 export const WINDOW_DAYS = 30;
-export const REFRESH_AFTER_H = 12; // re-walking a dot covered less than this long ago does nothing (stops pacing to farm)
 const DAY = 86400000;
+const IST_MS = 19800000; // India time, UTC+5:30
+
+/** Start of the India-time day containing `ms`. Only the day, never the time of day, is shared with the server. */
+export const dayStartMs = (ms: number): number => Math.floor((ms + IST_MS) / DAY) * DAY - IST_MS;
+const sameDay = (a: number, b: number) => dayStartMs(a) === dayStartMs(b);
 
 export type DotState = "none" | "mine" | "others";
 export type SyncState = "off" | "pending" | "ok" | "error";
@@ -18,13 +22,16 @@ export class Coverage {
   private dirty = false;
   private timers: number[] = [];
 
+  readonly serverArea: string;
+
   /** `serverArea` is what the API calls the shared map (e.g. "domlur" or "domlur-test"). */
-  constructor(readonly serverArea: string) {
+  constructor(serverArea: string) {
+    this.serverArea = serverArea;
     try {
       const s = JSON.parse(localStorage.getItem(this.storeKey) || "null") as Saved | null;
       if (s) {
         this.mine = new Map(Object.entries(s.mine)); this.shared = new Map(Object.entries(s.shared));
-        this.outbox = new Map(Object.entries(s.outbox)); this.offsetDays = s.offsetDays || 0;
+        this.outbox = new Map(Object.entries(s.outbox).map(([k, ms]) => [k, dayStartMs(ms)] as [string, number])); this.offsetDays = s.offsetDays || 0;
       }
     } catch { /* storage unavailable: run in memory */ }
   }
@@ -54,10 +61,10 @@ export class Coverage {
   /** Walk over a dot. Returns what happened so the HUD can count it. */
   eat(key: string, share: boolean): "new" | "refresh" | "skip" {
     const t = this.ts(key), covered = t !== undefined && this.now() - t < WINDOW_DAYS * DAY;
-    if (covered && this.now() - t! < REFRESH_AFTER_H * 3600000) return "skip";
+    if (covered && sameDay(t!, this.now())) return "skip";   // already covered today (by anyone): walking it again does nothing
     const now = this.now();
     this.mine.set(key, now);
-    if (share) this.outbox.set(key, Math.min(now, Date.now())); // never send a demo-clock timestamp to the server
+    if (share) this.outbox.set(key, dayStartMs(Math.min(now, Date.now()))); // the day only; never a demo-clock time or a time of day
     this.dirty = true;
     return covered ? "refresh" : "new";
   }
@@ -98,10 +105,10 @@ export class Coverage {
     try {
       const r = await fetch("/api/coverage", {
         method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
-        body: JSON.stringify({ area: this.serverArea, e: batch.map(([k, ms]) => [k, Math.floor(ms / 1000)]) }),
+        body: JSON.stringify({ area: this.serverArea, e: batch.map(([k, ms]) => [k, Math.floor(dayStartMs(ms) / 1000)]) }),
       });
       if (!r.ok) throw new Error(`server said ${r.status}`);
-      for (const [k, ms] of batch) { if (this.outbox.get(k) === ms) this.outbox.delete(k); if (ms > (this.shared.get(k) ?? 0)) this.shared.set(k, ms); }
+      for (const [k, ms] of batch) { if (this.outbox.get(k) === ms) this.outbox.delete(k); if (ms > (this.shared.get(k) ?? 0)) this.shared.set(k, ms); }  // already day-rounded
       this.dirty = true; this.save();
       this.sync = { state: "ok", detail: "", at: Date.now() };
     } catch (e) {

@@ -1,7 +1,23 @@
 {
   "compilerOptions": {
-    "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "lib": ["ES2022", "DOM"],
-    "strict": true, "noEmit": true, "skipLibCheck": true, "types": ["node"], "allowImportingTsExtensions": true
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true
   },
-  "include": ["api"]
+  "include": [
+    "api",
+    "src/dots/coverage.ts",
+    "src/dots/coverage.test.ts"
+  ]
 }
