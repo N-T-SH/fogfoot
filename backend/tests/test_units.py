@@ -149,7 +149,7 @@ def test_narrow_lane_becomes_one_shared_unit_per_100m_on_the_centreline():
 
 
 def test_wider_street_keeps_two_kerbs():
-    roads, bld = _lane_with_buildings(gap=14.0)
+    roads, bld = _lane_with_buildings(gap=14.0)   # 46 ft, wider than the 40 ft threshold
     units = build_units(roads, _ward(X0 - 50, Y0 - 100, X0 + 400, Y0 + 100), CFG, buildings=bld)
     assert set(units["side"]) == {"L", "R"} and set(units["kind"]) == {"kerb"}
 
@@ -181,12 +181,13 @@ def test_shared_streets_can_be_disabled():
 
 def test_gap_is_measured_not_assumed_lane_gaps_between_threshold_and_wide():
     from fogfoot.network.shared import shared_street_gaps
-    ru = _lane_with_buildings(gap=7.5)[0].to_crs(CFG.units.projected_crs)
-    bu = _lane_with_buildings(gap=7.5)[1].to_crs(CFG.units.projected_crs)
+    just_under = CFG.units.shared_streets.max_gap_m - 0.7
+    ru = _lane_with_buildings(gap=just_under)[0].to_crs(CFG.units.projected_crs)
+    bu = _lane_with_buildings(gap=just_under)[1].to_crs(CFG.units.projected_crs)
     g = shared_street_gaps(ru, bu, CFG.units.shared_streets)
-    assert g[1] == pytest.approx(7.5, abs=0.2)
-    ru, bu = [d.to_crs(CFG.units.projected_crs) for d in _lane_with_buildings(gap=8.6)]
-    assert shared_street_gaps(ru, bu, CFG.units.shared_streets) == {}   # just over max_gap_m=8.0
+    assert g[1] == pytest.approx(just_under, abs=0.2)
+    ru, bu = [d.to_crs(CFG.units.projected_crs) for d in _lane_with_buildings(gap=CFG.units.shared_streets.max_gap_m + 0.6)]
+    assert shared_street_gaps(ru, bu, CFG.units.shared_streets) == {}   # just over the threshold
 
 
 # ---- Overpass retry behaviour -------------------------------------------------------------------

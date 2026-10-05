@@ -33,8 +33,8 @@ class OsmCfg(BaseModel):
 class SharedStreetsCfg(BaseModel):
     enabled: bool = True
     candidate_highway: list[str] = ["residential", "living_street", "unclassified"]
-    max_gap_m: float = 8.0
-    probe_m: float = 12
+    max_gap_m: float = 12.19   # 40 ft
+    probe_m: float = 15
     sample_every_m: float = 8
     min_both_sides_fraction: float = 0.5
 
