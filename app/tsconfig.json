@@ -16,7 +16,8 @@
     "types": [
       "vite/client",
       "vite-plugin-pwa/client"
-    ]
+    ],
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src"

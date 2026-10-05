@@ -2,7 +2,7 @@ import "../style.css";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { angleDiffDeg, bearingDeg, cameraHeadingDeg, cfgFromUrl, envReport, haversineM, qualityGate } from "./measure";
 import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
-import type { EncodeReq, EncodeRes } from "./encode.worker";
+import type { EncodeReq, EncodeRes } from "../capture/encode.worker";
 import { runBench, type BenchResult } from "./bench";
 
 // Spike A: measure whether eyes-up PWA capture is viable on low-end Android and iOS.
@@ -123,7 +123,7 @@ export function Spike() {
       let reqId = 0;
       if (workerOk) {
         try {
-          worker = new Worker(new URL("./encode.worker.ts", import.meta.url), { type: "module" });
+          worker = new Worker(new URL("../capture/encode.worker.ts", import.meta.url), { type: "module" });
           worker.onmessage = (ev: MessageEvent<EncodeRes>) => { pending.get(ev.data.id)?.(ev.data); pending.delete(ev.data.id); };
           worker.onerror = () => { pending.forEach((f, id) => f({ id, error: "worker crashed" })); pending.clear(); };
           cleanups.push(() => worker?.terminate());
