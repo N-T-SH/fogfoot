@@ -1,0 +1,29 @@
+7 wards: Agara, Domluru, HSR Layout, Indiranagar, Kodihalli, Kormangala East, Kormangala West
+8904 OSM ways; 1106 separate sidewalk ways mapped
+80352 building footprints
+{
+  "units": 5843,
+  "total_km": 534.0,
+  "by_kind_km": {
+    "kerb": 492.8,
+    "shared": 41.2
+  },
+  "shared_units": 492,
+  "by_highway": {
+    "living_street": 8.2,
+    "primary": 28.8,
+    "residential": 402.6,
+    "secondary": 20.8,
+    "tertiary": 73.6
+  },
+  "by_ward_km": {
+    "Agara": 91.6,
+    "Domluru": 54.0,
+    "HSR Layout": 111.1,
+    "Indiranagar": 65.3,
+    "Kodihalli": 47.5,
+    "Kormangala East": 98.0,
+    "Kormangala West": 66.4
+  }
+}
+wrote /home/runner/work/fogfoot/fogfoot/data/units.geojson
