@@ -18,6 +18,9 @@
   "include": [
     "api",
     "src/dots/coverage.ts",
-    "src/dots/coverage.test.ts"
+    "src/dots/coverage.test.ts",
+    "src/capture/rules.ts",
+    "src/capture/rules.test.ts",
+    "src/spike/measure.ts"
   ]
 }

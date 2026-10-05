@@ -1,5 +1,5 @@
 // Runs the on-device quality gate and JPEG encode off the main thread.
-import { gateFromPixels } from "./measure";
+import { gateFromPixels } from "../spike/measure";
 
 export interface EncodeReq { id: number; bitmap: ImageBitmap; maxWidth: number; quality: number; minSharpness: number; minLuma: number }
 export interface EncodeRes {

@@ -30,8 +30,8 @@ units:
   shared_streets:
     enabled: true
     candidate_highway: [residential, living_street, unclassified]
-    max_gap_m: 8.0              # median face-to-face gap between buildings; wider streets keep two kerbs
-    probe_m: 12                 # how far to look for a building on each side
+    max_gap_m: 12.19            # 40 ft: median face-to-face gap between buildings; wider streets keep two kerbs
+    probe_m: 15                 # how far to look for a building on each side (must exceed max_gap_m)
     sample_every_m: 8
     min_both_sides_fraction: 0.5  # samples with a building on both sides, as a share of all samples
   length_m: 100

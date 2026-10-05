@@ -1,7 +1,7 @@
 // Quick device check: no walking, no GPS. Runs the capture pipeline N times in both modes and times it,
 // so anyone with a cheap phone (or a cloud device) can contribute a useful number in ~30 s.
 import { openDB } from "idb";
-import type { EncodeReq, EncodeRes } from "./encode.worker";
+import type { EncodeReq, EncodeRes } from "../capture/encode.worker";
 import { qualityGate } from "./measure";
 
 export interface BenchCfg { maxWidth: number; jpegQuality: number; minSharpness: number; minLuma: number }
@@ -51,7 +51,7 @@ async function mainPath(src: CanvasImageSource & { width?: number; videoWidth?: 
 
 async function workerPath(src: CanvasImageSource & { videoWidth?: number; width?: number }, cfg: BenchCfg, resizeOnGrab: boolean): Promise<PathResult | null> {
   if (typeof Worker === "undefined" || !("OffscreenCanvas" in window) || typeof createImageBitmap !== "function") return null;
-  const worker = new Worker(new URL("./encode.worker.ts", import.meta.url), { type: "module" });
+  const worker = new Worker(new URL("../capture/encode.worker.ts", import.meta.url), { type: "module" });
   const pending = new Map<number, (r: EncodeRes) => void>();
   worker.onmessage = (ev: MessageEvent<EncodeRes>) => { pending.get(ev.data.id)?.(ev.data); pending.delete(ev.data.id); };
   worker.onerror = () => { pending.forEach((f, id) => f({ id, error: "worker crashed" })); pending.clear(); };

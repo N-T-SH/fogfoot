@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { buildField, dotsNear, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
 import { Coverage, WINDOW_DAYS } from "./coverage";
 import { itemIndex, makeSprites, type Sprites } from "./icons";
+import { CAPTURE, FrameSaver, type SaverState } from "../capture/saver";
+import { recentFrames } from "../capture/queue";
 
 const SIM_EAT_RADIUS_M = 7;
 const GPS_EAT_RADIUS_M = 12; // wider than the sim: phone GPS wobbles; side (L/R) is not resolved in this prototype
@@ -129,9 +131,10 @@ function DotsApp({ data }: { data: DemoFile }) {
   const live = useRef({
     f: null as DotField | null, cov: null as Coverage | null, layer: null as DotLayer | null, map: null as L.Map | null,
     avatar: null as Avatar | null, mode: "idle" as "idle" | "sim" | "gps", route: [] as [number, number][], cum: [] as number[], s: 0,
-    lastDraw: 0, speed: 12, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
+    lastDraw: 0, speed: 12, saver: null as FrameSaver | null, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
   });
-  const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false });
+  const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false, gallery: false });
+  const [frames, setFrames] = useState<SaverState>({ on: true, count: 0, bytes: 0, blurry: 0, dark: 0, full: false, capBytes: CAPTURE.capMB * 1e6, error: "" });
   const videoEl = useRef<HTMLVideoElement>(null);
   const hudRef = useRef(hud); hudRef.current = hud;
   const patch = (p: Partial<typeof hud>) => setHud((h) => ({ ...h, ...p }));
@@ -151,16 +154,17 @@ function DotsApp({ data }: { data: DemoFile }) {
   const eatAt = (lat: number, lon: number, radius: number, share: boolean) => {
     const L_ = live.current, f = L_.f!; const [x, y] = toLocal(f, lon, lat);
     let added = 0;
+    const keys: string[] = [];
     for (const i of dotsNear(f, x, y, radius)) {
       const r = L_.cov!.eat(f.key[i], share);
-      if (r === "new") { counters.current.added++; added++; } else if (r === "refresh") { counters.current.refreshed++; added++; }
+      if (r === "new") { counters.current.added++; added++; keys.push(f.key[i]); } else if (r === "refresh") { counters.current.refreshed++; added++; keys.push(f.key[i]); }
     }
     if (added) {
       if (L_.avatar) L_.avatar.pulse = 1;
       const now = performance.now();
       if (now - L_.lastBuzz > 120) { L_.lastBuzz = now; try { navigator.vibrate?.(8); } catch { /* unsupported (iOS) */ } }
     }
-    return added;
+    return keys;
   };
 
   const posAt = (s: number): [number, number] => {
@@ -246,7 +250,7 @@ function DotsApp({ data }: { data: DemoFile }) {
 
   const startGps = () => {
     const L_ = live.current, f = L_.f!, map = L_.map!;
-    halt(); counters.current = { added: 0, refreshed: 0 }; void startCamera(); void lockScreen();
+    halt(); counters.current = { added: 0, refreshed: 0 }; void startCamera(); void lockScreen(); L_.saver?.reset();
     if (!navigator.geolocation) { patch({ msg: "This device has no GPS." }); return; }
     L_.mode = "gps";
     L_.watch = navigator.geolocation.watchPosition((p) => {
@@ -262,7 +266,14 @@ function DotsApp({ data }: { data: DemoFile }) {
       const near = dotsNear(f, x, y, 40).length;
       if (p.coords.accuracy > MAX_GPS_ACC_M) { patch({ msg: `GPS is vague (${Math.round(p.coords.accuracy)} m), not counting yet.` }); }
       else if (!near && counters.current.added === 0) patch({ msg: `You're outside the demo area (${data.name}). Try Simulate walk.` });
-      else { patch({ msg: "" }); eatAt(lat, lon, GPS_EAT_RADIUS_M, true); }
+      else {
+        patch({ msg: "" });
+        eatAt(lat, lon, GPS_EAT_RADIUS_M, true);
+        // Step 1: a real GPS fix with a good reading also saves a camera frame on the phone (never for simulated walks).
+        // The frame is tagged with the street stretches within 8 m of the fix, so it can later be tied to its units.
+        const around = dotsNear(f, x, y, 8).slice(0, 8).map((i) => f.key[i]);
+        void L_.saver?.consider({ lat, lon, acc: p.coords.accuracy }, around);
+      }
       map.panTo([lat, lon], { animate: false });
       L_.layer!.redraw(); refreshHud({ mode: "gps" });
     }, (e) => patch({ msg: `GPS error: ${e.message}`, mode: "idle" }), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
@@ -285,11 +296,13 @@ function DotsApp({ data }: { data: DemoFile }) {
     L_.layer = new DotLayer(L_.f, L_.cov, () => L_.avatar).addTo(map) as DotLayer;
     setTiles(true);
     const beat = setInterval(() => { if (L_.mode === "idle") L_.layer?.redraw(); }, 400); // pellets pulse
+    L_.saver = new FrameSaver(() => videoEl.current, () => setFrames({ ...L_.saver!.state }));
+    void L_.saver.init();
     patch({ total: L_.f.n });
     setTimeout(() => map.invalidateSize(), 0);
     refreshHud();
     L_.cov.start(() => { L_.layer?.redraw(); refreshHud(); });
-    return () => { clearInterval(beat); stop(); L_.cov?.stop(); map.remove(); };
+    return () => { clearInterval(beat); stop(); L_.saver?.dispose(); L_.cov?.stop(); map.remove(); };
   }, []);
 
   const setTiles = (on: boolean) => {
@@ -316,6 +329,7 @@ function DotsApp({ data }: { data: DemoFile }) {
         <div class="cam-badges">
           {hud.mode === "sim" && <span class="badge warn">Simulated walk: camera shows where you really are</span>}
           {hud.mode === "gps" && <span class="badge">Walking · GPS on</span>}
+          {(hud.mode === "gps" || frames.count > 0) && <span class={`badge${frames.full || frames.error ? " warn" : ""}`}>{frames.error || (frames.full ? "Frame storage full" : frames.on ? `Photos saved on this phone: ${frames.count} · ${(frames.bytes / 1e6).toFixed(1)} MB` : "Photo saving off")}</span>}
           <span class="badge">{hud.sync === "ok" ? "Shared with other walkers" : hud.sync === "error" ? "Offline: saved on this phone" : "Connecting…"}</span>
           {room === "test" && <span class="badge">{data.name} · test room</span>}
         </div>
@@ -334,9 +348,48 @@ function DotsApp({ data }: { data: DemoFile }) {
           <button class={hud.mode === "sim" ? "on" : ""} onClick={() => (hud.mode === "sim" ? stop() : startSim())}>{hud.mode === "sim" ? "Stop sim" : "Simulate"}</button>
           <button onClick={() => { const s = hud.speed >= 24 ? 6 : hud.speed * 2; live.current.speed = s; patch({ speed: s }); }}>Speed ×{hud.speed}</button>
           <button onClick={() => { live.current.cov!.advance(10); live.current.layer?.redraw(); refreshHud(); }}>+10 days</button>
+          <button onClick={() => live.current.saver?.setOn(!frames.on)} class={frames.on ? "on" : ""}>Photos: {frames.on ? "on" : "off"}</button>
+          <button onClick={() => patch({ gallery: true })}>Photos ({frames.count})</button>
           <button onClick={toggleTiles} class={hud.tiles ? "on" : ""}>Street map</button>
           <button onClick={() => { stop(); live.current.cov!.forgetMine(); counters.current = { added: 0, refreshed: 0 }; live.current.layer?.redraw(); refreshHud(); }}>Forget mine</button>
         </div>
+      </div>
+      {hud.gallery && <Gallery saver={live.current.saver!} state={frames} onClose={() => patch({ gallery: false })} />}
+    </div>
+  );
+}
+
+/** What has been saved on this phone, so photo quality can be judged by eye. Nothing is uploaded. */
+function Gallery({ saver, state, onClose }: { saver: FrameSaver; state: SaverState; onClose: () => void }) {
+  const [items, setItems] = useState<{ url: string; caption: string }[]>([]);
+  useEffect(() => {
+    let urls: string[] = [], dead = false;
+    recentFrames(24).then((fs) => {
+      if (dead) return;
+      const next = fs.map((f) => {
+        const url = URL.createObjectURL(f.blob); urls.push(url);
+        const t = new Date(f.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        return { url, caption: `${t} · GPS ±${Math.round(f.acc)} m · ${Math.round(f.blob.size / 1024)} KB` };
+      });
+      setItems(next);
+    });
+    return () => { dead = true; urls.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [state.count]);
+  return (
+    <div class="gallery">
+      <div class="gallery-head">
+        <div>
+          <b>{state.count}</b> photos · {(state.bytes / 1e6).toFixed(1)} MB of {(state.capBytes / 1e6).toFixed(0)} MB
+          <div class="sub">Dropped: {state.blurry} blurry, {state.dark} too dark. Photos stay on this phone; nothing is uploaded.</div>
+        </div>
+        <button onClick={onClose}>Close</button>
+      </div>
+      <div class="gallery-grid">
+        {items.map((it) => (<figure><img src={it.url} alt="" /><figcaption>{it.caption}</figcaption></figure>))}
+        {!items.length && <p>No photos yet. Start a GPS walk with the camera on and walk 10 m or more.</p>}
+      </div>
+      <div class="gallery-foot">
+        <button class="danger" onClick={() => { if (confirm("Delete all photos saved on this phone?")) void saver.clear(); }}>Delete all photos</button>
       </div>
     </div>
   );
