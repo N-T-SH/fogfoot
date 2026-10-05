@@ -1,3 +1,4 @@
+import "../style.css";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { angleDiffDeg, bearingDeg, cameraHeadingDeg, cfgFromUrl, envReport, haversineM, qualityGate } from "./measure";
 import { clearFrames, frameCount, putFrame, totalBytes } from "./store";
