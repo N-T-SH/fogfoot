@@ -1,14 +1,13 @@
 import { blobStore } from "./_lib/blobStore.js";
-import { addBatch, readCoverage, validateBatch } from "./_lib/coverage.js";
+import { addBatch, isArea, readCoverage, validateBatch } from "./_lib/coverage.js";
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...extra } });
 
-/** GET /api/coverage?area=domlur -> { now, e: [[dotKey, unixSeconds], ...] } for the last 30 days. */
+/** GET /api/coverage?area=domlur -> { now, e: [[dotKey, dayStartUnixSeconds], ...] } for the last 30 days (day precision only). */
 export async function GET(req: Request) {
   const area = new URL(req.url).searchParams.get("area") ?? "";
-  const check = validateBatch({ area, e: [["1_0_L:0", 0]] }, Math.floor(Date.now() / 1000)); // reuse the area check
-  if (!check.ok && check.error === "unknown area") return json({ error: "unknown area" }, 400);
+  if (!isArea(area)) return json({ error: "unknown area" }, 400);
   try {
     const nowS = Math.floor(Date.now() / 1000);
     const c = await readCoverage(blobStore, area, nowS);
