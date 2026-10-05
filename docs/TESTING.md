@@ -4,7 +4,7 @@ We need numbers from cheap Android phones and from iPhones. You do **not** need 
 
 ## 1-minute check (anyone, any phone)
 
-1. Open the test link on the phone: https://fogfoot.vercel.app (or the preview link we send you).
+1. Open the test link on the phone: https://fogfoot.vercel.app/#/spike (the capture test page; the pick-up prototype is at the plain address).
 2. Tap **Quick device check (30 s)**. Allow the camera when asked and point it at anything. If you prefer not to allow the camera, it still works with a built-in test picture.
 3. Wait about 30 seconds until it says "Done".
 4. Tap **Share report** and send it to us (WhatsApp works). If sharing isn't offered, tap **Copy report** and paste it into a message.
@@ -19,7 +19,7 @@ Please also tell us the phone model (for example "Redmi 9A, 2 GB RAM") and how o
 4. Walk about 300 m to 2 km, ideally on a street with buildings on both sides.
 5. Tap **Stop**, then **Share report**.
 
-Optional comparison: repeat with `?worker=0` added to the link (`https://fogfoot.vercel.app/?worker=0`), which uses the older method.
+Optional comparison: repeat with `?worker=0` added to the link (`https://fogfoot.vercel.app/?worker=0#/spike`), which uses the older method.
 
 ## Getting devices without owning them
 
