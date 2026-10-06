@@ -5,7 +5,7 @@ import { courseDeg, isFull, shouldSample, storageBudget, type Fix } from "./rule
 
 /** Same defaults as Spike A / config/settings.yaml `capture:`; override from the URL, e.g. #/?q=0.5&w=800 */
 export const CAPTURE = cfgFromUrl(
-  { sampleEveryM: 10, jpegQuality: 0.6, maxWidth: 960, minSharpness: 40, minLuma: 45, maxGpsAccM: 35, capMB: 150 },
+  { sampleEveryM: 10, jpegQuality: 0.6, maxWidth: 1280, minSharpness: 40, minLuma: 45, maxGpsAccM: 35, capMB: 150 },
   { every: "sampleEveryM", q: "jpegQuality", w: "maxWidth", sharp: "minSharpness", luma: "minLuma", acc: "maxGpsAccM", cap: "capMB" },
 );
 
