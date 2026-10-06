@@ -83,6 +83,24 @@ export function dotsNear(f: DotField, px: number, py: number, r: number): number
   return out;
 }
 
+/** The dots a walker at (px,py) is on: only the nearest kerb unit, so both sides of a road are not credited at once.
+ *  `prev` is the unit credited last time; it keeps the walk unless another unit is clearly closer (GPS wobble is bigger than a kerb gap). */
+export const SIDE_STICKY_M = 4;
+export function dotsOnSide(f: DotField, px: number, py: number, r: number, prev = -1): { dots: number[]; unit: number } {
+  const near = dotsNear(f, px, py, r);
+  if (!near.length) return { dots: near, unit: prev };
+  const best = new Map<number, number>();
+  for (const i of near) {
+    const d = Math.hypot(f.x[i] - px, f.y[i] - py), u = f.unit[i];
+    if (d < (best.get(u) ?? Infinity)) best.set(u, d);
+  }
+  let unit = -1, dMin = Infinity;
+  for (const [u, d] of best) if (d < dMin) { dMin = d; unit = u; }
+  const keep = best.get(prev);
+  if (keep !== undefined && keep <= dMin + SIDE_STICKY_M) unit = prev;
+  return { dots: near.filter((i) => f.unit[i] === unit), unit };
+}
+
 export function toLocal(f: DotField, lon: number, lat: number): [number, number] {
   return [(lon - f.lon0) * f.kx, (lat - f.lat0) * f.ky];
 }
