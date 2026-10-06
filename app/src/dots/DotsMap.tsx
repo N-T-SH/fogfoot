@@ -3,7 +3,7 @@ import "leaflet/dist/leaflet.css";
 import "./dots.css";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { buildField, dotsNear, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
+import { buildField, dotsNear, dotsOnSide, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
 import { Coverage, WINDOW_DAYS } from "./coverage";
 import { itemIndex, makeSprites, type Sprites } from "./icons";
 import { CAPTURE, FrameSaver, type SaverState } from "../capture/saver";
@@ -131,7 +131,7 @@ function DotsApp({ data }: { data: DemoFile }) {
   const live = useRef({
     f: null as DotField | null, cov: null as Coverage | null, layer: null as DotLayer | null, map: null as L.Map | null,
     avatar: null as Avatar | null, mode: "idle" as "idle" | "sim" | "gps", route: [] as [number, number][], cum: [] as number[], s: 0,
-    lastDraw: 0, speed: 12, saver: null as FrameSaver | null, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
+    lastDraw: 0, speed: 12, saver: null as FrameSaver | null, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, sideUnit: -1, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
   });
   const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false, gallery: false });
   const [frames, setFrames] = useState<SaverState>({ on: true, count: 0, bytes: 0, blurry: 0, dark: 0, full: false, capBytes: CAPTURE.capMB * 1e6, error: "" });
@@ -155,7 +155,9 @@ function DotsApp({ data }: { data: DemoFile }) {
     const L_ = live.current, f = L_.f!; const [x, y] = toLocal(f, lon, lat);
     let added = 0;
     const keys: string[] = [];
-    for (const i of dotsNear(f, x, y, radius)) {
+    const side = dotsOnSide(f, x, y, radius, L_.sideUnit);
+    L_.sideUnit = side.unit;
+    for (const i of side.dots) {
       const r = L_.cov!.eat(f.key[i], share);
       if (r === "new") { counters.current.added++; added++; keys.push(f.key[i]); } else if (r === "refresh") { counters.current.refreshed++; added++; keys.push(f.key[i]); }
     }
@@ -271,7 +273,7 @@ function DotsApp({ data }: { data: DemoFile }) {
         eatAt(lat, lon, GPS_EAT_RADIUS_M, true);
         // Step 1: a real GPS fix with a good reading also saves a camera frame on the phone (never for simulated walks).
         // The frame is tagged with the street stretches within 8 m of the fix, so it can later be tied to its units.
-        const around = dotsNear(f, x, y, 8).slice(0, 8).map((i) => f.key[i]);
+        const around = dotsOnSide(f, x, y, 8, L_.sideUnit).dots.slice(0, 8).map((i) => f.key[i]);
         void L_.saver?.consider({ lat, lon, acc: p.coords.accuracy }, around);
       }
       map.panTo([lat, lon], { animate: false });
