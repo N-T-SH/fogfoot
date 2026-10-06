@@ -29,7 +29,7 @@ export interface Store {
 /** Areas the demo accepts; "-test" rooms are for experiments (e.g. sharing simulated walks). */
 const AREA_RE = /^(domlur|koramangala|healthcheck)(-test)?$/;
 export const isArea = (area: unknown): area is string => typeof area === "string" && AREA_RE.test(area);
-const KEY_RE = /^\d{1,12}_\d{1,4}_[LRC]:\d{1,4}$/;
+const KEY_RE = /^(g\d{1,6}_\d{1,6}|\d{1,12}_\d{1,4}_[LRC]:\d{1,4})$/;   // geo cell, or the older unit-based id
 
 export type Parsed = { ok: true; area: string; entries: [string, number][] } | { ok: false; error: string };
 

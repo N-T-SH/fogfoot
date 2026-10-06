@@ -36,7 +36,7 @@ export class Coverage {
     } catch { /* storage unavailable: run in memory */ }
   }
 
-  private get storeKey() { return `fogfoot-cov-v2:${this.serverArea}`; }
+  private get storeKey() { return `fogfoot-cov-v3:${this.serverArea}`; }
   now() { return Date.now() + this.offsetDays * DAY; }
   ts(key: string): number | undefined {
     const t = Math.max(this.mine.get(key) ?? 0, this.shared.get(key) ?? 0);
