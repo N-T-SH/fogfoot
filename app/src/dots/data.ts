@@ -15,6 +15,15 @@ export interface DotField {
   endGrid: Map<number, number[]>;
 }
 
+// Dot ids come from where a dot sits (a fixed ~5 m grid over Bengaluru), never from unit ids, so a rebuilt
+// unit file or a changed threshold keeps every dot's coverage. Two dots in one cell share a key on purpose.
+export const KEY_CELL_M = 5;
+const KEY_LAT0 = 12.5, KEY_LON0 = 77.0;
+const KEY_DLAT = KEY_CELL_M / 110700, KEY_DLON = KEY_CELL_M / (111320 * Math.cos((13 * Math.PI) / 180));
+export function geoKey(lon: number, lat: number): string {
+  return `g${Math.max(0, Math.floor((lon - KEY_LON0) / KEY_DLON))}_${Math.max(0, Math.floor((lat - KEY_LAT0) / KEY_DLAT))}`;
+}
+
 const cellKey = (cx: number, cy: number) => (cx + 20000) * 40000 + (cy + 20000);
 
 export function buildField(d: DemoFile, powerEvery = 36): DotField {
@@ -35,14 +44,14 @@ export function buildField(d: DemoFile, powerEvery = 36): DotField {
     let L = 0;
     const cum = [0];
     for (let i = 1; i < m.length; i++) { L += Math.hypot(m[i][0] - m[i - 1][0], m[i][1] - m[i - 1][1]); cum.push(L); }
-    let seg = 1, k = 0;
-    for (let s = DOT_SPACING_M / 2; s < L; s += DOT_SPACING_M, k++) {
+    let seg = 1;
+    for (let s = DOT_SPACING_M / 2; s < L; s += DOT_SPACING_M) {
       while (seg < cum.length - 1 && cum[seg] < s) seg++;
       const t = (s - cum[seg - 1]) / Math.max(cum[seg] - cum[seg - 1], 1e-9);
       const px = m[seg - 1][0] + t * (m[seg][0] - m[seg - 1][0]), py = m[seg - 1][1] + t * (m[seg][1] - m[seg - 1][1]);
       const idx = lon.length;
       x.push(px); y.push(py); lon.push(lon0 + px / kx); lat.push(lat0 + py / ky);
-      unit.push(ui); key.push(`${u.id}:${k}`);
+      unit.push(ui); key.push(geoKey(lon0 + px / kx, lat0 + py / ky));
       power.push(0);
       put(grid, px, py, idx);
     }
