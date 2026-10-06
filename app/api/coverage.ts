@@ -1,3 +1,5 @@
+import { allowShare } from "./_lib/account.js";
+import { authConfig } from "./_lib/auth.js";
 import { blobStore } from "./_lib/blobStore.js";
 import { addBatch, isArea, readCoverage, validateBatch } from "./_lib/coverage.js";
 
@@ -32,6 +34,10 @@ export async function POST(req: Request) {
   const v = validateBatch(body, nowS);
   if (!v.ok) return json({ error: v.error }, 400);
   try {
+    // When sign-in is switched on, only signed-in people who accepted the notice may share, with a daily cap.
+    // The coverage itself stays anonymous: no user id is ever written next to a dot.
+    const gate = await allowShare(blobStore, authConfig(process.env), req.headers.get("cookie"), v.entries.length, nowS);
+    if (!gate.ok) return json({ error: gate.error }, gate.status, { "cache-control": "no-store" });
     await addBatch(blobStore, v.area, v.entries, nowS);
     return json({ ok: true, accepted: v.entries.length }, 200, { "cache-control": "no-store" });
   } catch (err) {

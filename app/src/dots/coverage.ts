@@ -9,7 +9,7 @@ export const dayStartMs = (ms: number): number => Math.floor((ms + IST_MS) / DAY
 const sameDay = (a: number, b: number) => dayStartMs(a) === dayStartMs(b);
 
 export type DotState = "none" | "mine" | "others";
-export type SyncState = "off" | "pending" | "ok" | "error";
+export type SyncState = "off" | "pending" | "ok" | "error" | "signin";
 
 interface Saved { mine: Record<string, number>; shared: Record<string, number>; outbox: Record<string, number>; offsetDays: number }
 
@@ -85,13 +85,13 @@ export class Coverage {
 
   async pull(): Promise<boolean> {
     try {
-      this.sync = { ...this.sync, state: this.sync.state === "ok" ? "ok" : "pending" };
+      if (this.sync.state !== "signin") this.sync = { ...this.sync, state: this.sync.state === "ok" ? "ok" : "pending" };
       const r = await fetch(`/api/coverage?area=${encodeURIComponent(this.serverArea)}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`server said ${r.status}`);
       const j = (await r.json()) as { e: [string, number][] };
       for (const [k, s] of j.e) { const ms = s * 1000; if (ms > (this.shared.get(k) ?? 0)) this.shared.set(k, ms); }
       this.dirty = true; this.save();
-      this.sync = { state: "ok", detail: "", at: Date.now() };
+      this.sync = this.sync.state === "signin" && this.outbox.size ? this.sync : { state: "ok", detail: "", at: Date.now() };   // keep asking for sign-in while walks are waiting
       return true;
     } catch (e) {
       this.sync = { state: "error", detail: (e as Error).message, at: Date.now() };
@@ -107,6 +107,7 @@ export class Coverage {
         method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
         body: JSON.stringify({ area: this.serverArea, e: batch.map(([k, ms]) => [k, Math.floor(dayStartMs(ms) / 1000)]) }),
       });
+      if (r.status === 401 || r.status === 403) { this.sync = { state: "signin", detail: String(r.status), at: Date.now() }; return; }   // kept in the outbox until you sign in
       if (!r.ok) throw new Error(`server said ${r.status}`);
       for (const [k, ms] of batch) { if (this.outbox.get(k) === ms) this.outbox.delete(k); if (ms > (this.shared.get(k) ?? 0)) this.shared.set(k, ms); }  // already day-rounded
       this.dirty = true; this.save();
