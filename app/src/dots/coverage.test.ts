@@ -67,3 +67,17 @@ test("day boundaries are India midnight", () => {
   assert.equal(dayStartMs(at("2026-10-04T18:30:00Z")), at("2026-10-04T18:30:00Z"));   // 00:00:00 IST on 5 Oct
   assert.equal(dayStartMs(at("2026-10-04T18:30:00Z") + DAY - 1), at("2026-10-04T18:30:00Z"));
 });
+
+test("a 401 from the server keeps the walk in the outbox and asks for sign-in; a later pull does not hide that", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const c = new Coverage("domlur-test");
+    withClock("2026-10-05T09:31:28Z", () => c.eat("g1_1", true));
+    globalThis.fetch = (async (url: string) => (String(url).includes("area=") ? new Response(JSON.stringify({ now: 1, e: [] })) : new Response("{}", { status: 401 }))) as typeof fetch;
+    await c.push();
+    assert.equal(c.sync.state, "signin");
+    assert.equal(c.outbox.size, 1);
+    await c.pull();
+    assert.equal(c.sync.state, "signin");
+  } finally { globalThis.fetch = realFetch; }
+});

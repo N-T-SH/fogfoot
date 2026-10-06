@@ -53,3 +53,19 @@
 .gallery-foot { padding: 10px 14px calc(env(safe-area-inset-bottom) + 12px); border-top: 1px solid #263044; }
 .gallery button { min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #34425e; background: #172036; color: #e8ecf5; font-size: 14px; }
 .gallery button.danger { color: #ff9a9a; }
+
+/* account sheet */
+.acct { position: fixed; inset: 0; z-index: 2000; background: #fff; color: #1b1b1b; display: flex; flex-direction: column; font: 15px/1.45 system-ui, sans-serif; }
+.acct-head { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #ddd; }
+.acct-head b { flex: 1; font-size: 17px; }
+.acct-body { padding: 14px; overflow: auto; display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.acct button, .acct select, .acct input, .acct textarea { font: inherit; padding: 8px 12px; border: 1px solid #bbb; border-radius: 10px; background: #fff; color: inherit; }
+.acct button.primary { background: #1b6e3a; color: #fff; border-color: #1b6e3a; }
+.acct button.danger { color: #a40000; border-color: #a40000; }
+.acct button:disabled { opacity: .5; }
+.acct-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.acct ul { padding-left: 20px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.acct h3 { margin: 6px 0 0; font-size: 16px; }
+.acct small { color: #666; }
+.acct-msg { color: #a40000; margin: 0; }
+.gbtn { min-height: 44px; }
