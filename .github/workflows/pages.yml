@@ -1,5 +1,5 @@
 name: landing-page
-# Publishes ./site to GitHub Pages (https://n-t-sh.github.io/fogfoot/). One-time: repo Settings > Pages > Source = "GitHub Actions".
+# Publishes ./site to GitHub Pages (https://n-t-sh.github.io/greenlit/). One-time: repo Settings > Pages > Source = "GitHub Actions".
 on:
   push:
     branches: [main]

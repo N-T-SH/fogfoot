@@ -1,6 +1,6 @@
 # Landing page
 
-Static page published to https://n-t-sh.github.io/fogfoot/ by `.github/workflows/pages.yml`.
+Static page published to https://n-t-sh.github.io/greenlit/ by `.github/workflows/pages.yml`.
 
 - **Rename the app:** change `NAME` at the top of `main.js` (and the `<title>` / `og:title` in `index.html` for no-JS previews).
 - **Waitlist storage:** the form posts to `app/api/waitlist.ts` on the Vercel site (private Blob store, one tiny file per address). Only our own origins are allowed by CORS.
