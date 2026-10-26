@@ -51,3 +51,12 @@ test("hysteresis: GPS wobble across the centre line does not flip kerbs, a clear
   assert.equal(dotsOnSide(f, 50, -1.5, 12, north).unit, north);   // slightly nearer the south kerb, but still sticky
   assert.equal(dotsOnSide(f, 50, -3.9, 12, north).unit, south);   // clearly on the south side now
 });
+
+test("each stretch carries the piece of street it stands for, and the pieces tile the unit", () => {
+  const f = buildField(demo("x"));
+  assert.equal(f.seg.length, f.n * 4);
+  const lat = (i: number) => [f.seg[i * 4 + 1], f.seg[i * 4 + 3]];
+  const length = (i: number) => Math.abs(lat(i)[1] - lat(i)[0]) * 110700;
+  for (let i = 0; i < f.n - 1; i++) assert.ok(Math.abs(length(i) - 10) < 0.5, `piece ${i} is ${length(i)} m`);   // 10 m each, except possibly the last
+  for (let i = 1; i < f.n; i++) assert.ok(Math.abs(lat(i)[0] - lat(i - 1)[1]) * 110700 < 0.5, "pieces meet end to end");
+});

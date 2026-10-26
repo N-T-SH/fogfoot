@@ -1,19 +1,18 @@
-# Pick-up concept (was "dots"; working title)
+# Coverage map concept (working title)
 
-Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default demo: every kerb unit in the Domluru and Kodihalli wards, 1,260 units, 112 km, 11,259 items; `/#/dots?area=koramangala` for Koramangala; `/#/dots?room=test` is a separate shared room where simulated walks are uploaded too; `/#/icons` shows the icon set).
+Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default demo: every kerb unit in the Domluru and Kodihalli wards, 1,260 units, 112 km; `/#/dots?area=koramangala` for Koramangala; `/#/dots?room=test` is a separate shared room where simulated walks are uploaded too).
 
 ## What you see
 - **Top two thirds: the live camera**, so you can look at the road ahead while checking the phone. The map is the bottom third; **Expand map** gives it the whole screen and shrinks the camera to a corner window. The map is never expanded by default.
-- **Litter items instead of dots.** Every 10 m along a footpath sits a small item: toffee wrapper, water bottle, chai cup, snack packet, tender coconut, banana peel or plastic bag. They are flat, muted shapes drawn in code (Indian context, no brand logos) with a thin white edge so they stay readable on any map. Garbage heaps, drawn as a pile of tied black bags with a few things spilled in front, stand in for hotspots. Walking a stretch **picks the items up**; they turn into small green markers (darker green = picked up more recently).
-- **Counter (bottom): items picked up** by you in the last 30 days, plus this walk and everyone's total.
-- **Shared between walkers.** What anyone picked up in the last 30 days shows green for everyone; after 30 days it becomes litter again. Your walks are saved on the phone straight away and uploaded when online.
-- A walking-person silhouette marks you on the map. Only the dot-eating idea is borrowed from Pac-Man, not its look.
+- **Lines, nothing else.** Every footpath is a line. **Orange** means nobody has walked that stretch in the last 30 days; **green** means someone has (darker green = more recently). Stretches are 10 m long. Mine and other people's walks look the same on purpose.
+- **Counter (bottom): metres walked by you** in the last 30 days, plus this walk and the share of streets covered by all walkers.
+- **Shared between walkers.** Anything anyone walked in the last 30 days shows green for everyone; after 30 days it turns orange again. Your walks are saved on the phone straight away and uploaded when online.
+- A walking-person silhouette marks you on the map.
 
-## Important: the items are game tokens, not detections
-An icon at a spot does **not** mean litter was seen there. If the map is read literally it would say every footpath in Domlur is full of rubbish. Before this goes public the UI must say so plainly, and the "picked up" language should be reconsidered; later the tokens could be replaced by real detections (the rubric already has `litter` and `garbage_blackspot` issue codes). Keep the game layer (tokens, pick-ups) apart from the compliance layer (what the footpath is actually like).
+History: an earlier version showed litter icons and garbage heaps as game tokens (see git history before the "lines" change). They were removed because an icon at a spot reads as a claim that litter was seen there, which we cannot know without real detections. Keep any future game layer apart from the compliance layer (what the footpath is actually like).
 
 ## The idea
-Every kerb unit is a trail of dots, one dot per `DOT_SPACING_M` (10 m). Walking the footpath eats the dots you pass. Dots regrow after `fog_decay_days` (60). Unit progress and ward coverage are just "share of dots eaten". Zoomed out, per-unit lines glow in proportion to progress (the fog overview survives as the city-scale view).
+Every kerb unit is cut into stretches of `DOT_SPACING_M` (10 m), each identified by a fixed 5 m grid cell. Walking a stretch colours it green for 30 days. Unit progress and ward coverage are just the share of stretches that are green.
 
 ## How it maps onto the existing design (original dots framing)
 

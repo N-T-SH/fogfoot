@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Greenlit: usable footpaths, mapped by people who walk them</title>
+<meta name="description" content="A free, community map of Bengaluru's footpaths. Just walk with your phone's camera on. It tags problems for you, and every street you cover turns from orange to green.">
+<meta name="theme-color" content="#1b6e3a">
+<meta property="og:title" content="Greenlit: turn Bengaluru's footpaths green">
+<meta property="og:description" content="Just walk with your camera on. Problems get tagged, and every street you cover turns from orange to green. Free. Join the waitlist.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b6e3a'/%3E%3Cpath d='M5 21 C10 12 15 22 20 14 S27 12 28 11' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round'/%3E%3Ccircle cx='26' cy='9' r='3' fill='%23ffb454'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#f7f5ee;--ink:#17201a;--mute:#56625a;--card:#fff;--line:#e2dfd2;--green:#1b6e3a;--green2:#2e9e5b;--green-ink:#fff;--orange:#e07b39;--tint:#e9f4ec;--otint:#fdeee0;--err:#a40000;--r:18px}
+@media (prefers-color-scheme:dark){:root{--bg:#101411;--ink:#eef2ee;--mute:#a5ada7;--card:#171c18;--line:#2a312b;--green:#52c283;--green2:#52c283;--green-ink:#08150d;--orange:#f0a066;--tint:#15251b;--otint:#2a1d12;--err:#ff8a80}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Kannada","Noto Sans Devanagari",sans-serif}
+a{color:var(--green)}
+.wrap{max-width:720px;margin:0 auto;padding:0 18px}
+header{display:flex;align-items:center;gap:10px;padding:14px 0 6px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:21px;letter-spacing:-.02em;flex:1}
+.logo svg{width:30px;height:30px;flex:none}
+select{font:inherit;font-size:15px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.hero{padding:14px 0 6px}
+.eyebrow{display:inline-block;background:var(--otint);color:var(--orange);font-weight:700;font-size:13px;padding:4px 12px;border-radius:999px;margin:0 0 12px}
+h1{font-size:clamp(32px,8vw,50px);line-height:1.06;margin:0 0 12px;letter-spacing:-.03em}
+h1 em{font-style:normal;color:var(--green)}
+.lead{font-size:18px;color:var(--mute);margin:0 0 16px}
+.path{display:block;width:100%;height:auto;margin:0 0 14px}
+section{padding:20px 0}
+h2{font-size:23px;margin:0 0 12px;letter-spacing:-.015em}
+.steps{display:grid;gap:12px;padding:0;margin:0;list-style:none;counter-reset:s}
+.steps li{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px 14px 58px}
+.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:14px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--green);color:var(--green-ink);font-weight:800;display:grid;place-items:center}
+.steps b{display:block;margin-bottom:2px;font-size:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.join{border:2px solid var(--green);box-shadow:0 8px 30px rgba(27,110,58,.14)}
+form{display:grid;gap:11px}
+label{font-weight:600;display:block;margin-bottom:4px}
+input[type=email],select.f{width:100%;font:inherit;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+input[type=email]:focus,select.f:focus{outline:3px solid var(--tint);border-color:var(--green)}
+.chk{font-weight:400;display:flex;gap:10px;align-items:flex-start;font-size:14.5px;color:var(--mute);margin:0}
+.chk input{margin-top:4px;width:18px;height:18px;flex:none;accent-color:var(--green)}
+button.go{font:inherit;font-size:18px;font-weight:800;padding:14px 18px;border:0;border-radius:999px;background:var(--green);color:var(--green-ink);cursor:pointer}
+button.go[disabled]{opacity:.55}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.msg{min-height:1.3em;margin:0;font-weight:600}.msg.err{color:var(--err)}
+.mute{color:var(--mute);font-size:15px}
+.perks{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0 0;padding:0;list-style:none;font-size:14.5px;color:var(--mute)}
+.perks li::before{content:"\2713\00a0";color:var(--green);font-weight:800}
+ul.plain{margin:0;padding-left:20px}ul.plain li{margin:6px 0}
+.band{background:var(--tint);border-radius:var(--r);padding:22px 18px;text-align:center}
+.cta{display:inline-block;margin-top:6px;padding:13px 24px;border-radius:999px;background:var(--green);color:var(--green-ink);font-weight:800;text-decoration:none}
+footer{padding:26px 0 40px;border-top:1px solid var(--line);margin-top:22px;font-size:15px;color:var(--mute)}
+details{margin-top:10px}summary{cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1b6e3a"/><path d="M5 21 C10 12 15 22 20 14 S27 12 28 11" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><circle cx="26" cy="9" r="3" fill="#ffb454"/></svg><span class="nm">Greenlit</span></div>
+    <select id="lang" aria-label="Language"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option><option value="hi">हिन्दी</option></select>
+  </header>
+
+  <main>
+    <div class="hero">
+      <p class="eyebrow" data-t="eyebrow">Launching soon in Bengaluru · Domlur and Koramangala first</p>
+      <h1 data-t="h1">Turn Bengaluru's footpaths <em>green</em>.</h1>
+      <p class="lead" data-t="lead"><span class="nm">Greenlit</span> is a free, community map of Bengaluru's footpaths. Just walk with your phone's camera on: problems are tagged for you, and every street you cover turns from orange to green.</p>
+      <svg class="path" viewBox="0 0 640 60" role="img" aria-label="A footpath that turns from orange to green as people walk it">
+        <g fill="none" stroke-linecap="round" stroke-width="10">
+          <path d="M10 40 C60 20 100 18 150 30" stroke="#2e9e5b"/>
+          <path d="M150 30 C200 42 250 56 330 24" stroke="#8fcf9a"/>
+          <path d="M330 24 C420 -8 480 8 540 4 S600 18 630 32" stroke="#e07b39" opacity=".8"/>
+        </g>
+      </svg>
+
+      <div class="card join" id="join">
+        <form id="wl" novalidate>
+          <div><label for="email" data-t="email">Your e-mail</label><input id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required maxlength="254"></div>
+          <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+          <label class="chk"><input type="checkbox" id="agree" name="agree"><span data-t="agree">E-mail me when this opens in my area. I understand you keep my e-mail only for that, will not share it, and I can remove it any time on this page.</span></label>
+          <button class="go" id="send" type="submit" data-t="send">Join the waitlist</button>
+          <p class="msg" id="msg" role="status" aria-live="polite"></p>
+          <div><label for="area" data-t="area">Where do you walk most? (optional)</label>
+            <select id="area" class="f" name="area">
+              <option value="" data-t="aPick">Choose</option>
+              <option value="domlur">Domlur</option><option value="koramangala">Koramangala</option><option value="indiranagar">Indiranagar</option><option value="hsr">HSR Layout</option>
+              <option value="other-bengaluru" data-t="aOther">Elsewhere in Bengaluru</option><option value="outside-bengaluru" data-t="aOut">Outside Bengaluru</option>
+            </select></div>
+        </form>
+      </div>
+      <ul class="perks"><li data-t="k1">Free</li><li data-t="k2">No ads</li><li data-t="k3">Open source</li><li data-t="k4">One e-mail when it opens</li></ul>
+    </div>
+
+    <section>
+      <h2 data-t="howH">How it works</h2>
+      <ol class="steps">
+        <li><b data-t="s1h">Just walk</b><span data-t="s1">Open the app, start a walk and keep the camera on. No forms, no typing, no photos to pick. The camera view also keeps the road ahead in sight while you check your phone.</span></li>
+        <li><b data-t="s2h">It tags the problems</b><span data-t="s2">As you go, the footpath is checked and problems are tagged to the exact stretch automatically: parked vehicles, shop spillover, broken or uneven slabs, open drains, garbage, low wires, no footpath at all.</span></li>
+        <li><b data-t="s3h">Play</b><span data-t="s3">Every 10 m you walk turns from orange to green on a map shared with everyone, and your metres add up. Cover your ward, keep it green as the month rolls on, and see how your neighbourhood compares. Points, streaks and ward standings will join in.</span></li>
+        <li><b data-t="s4h">Map</b><span data-t="s4">Together we build a public, current picture of which footpaths are usable and clean, starting in Domlur and Koramangala.</span></li>
+      </ol>
+    </section>
+
+    <section>
+      <h2 data-t="whyH">Why</h2>
+      <p data-t="why">In June 2026 the Supreme Court of India recognised the right to walk on footpaths as part of our fundamental rights. Most of us know what the pavement looks like on the ground, but there is no shared, current picture of it.</p>
+      <p class="mute"><a href="https://cprindia.org/wp-content/uploads/2026/06/Supreme-Court-right-to-walk-footpaths.pdf" rel="noopener" data-t="whyLink">Read a summary of the judgment (CPR)</a></p>
+    </section>
+
+    <section>
+      <h2 data-t="princH">What we promise</h2>
+      <ul class="plain">
+        <li data-t="p1">Free and not for profit. No ads, no selling data.</li>
+        <li data-t="p2">Open source (AGPL-3.0), so anyone can check what it does.</li>
+        <li data-t="p3">Private by design: photos stay on your phone, and shared walks record only which stretch was covered and on which day.</li>
+        <li data-t="p4">Built for ordinary phones, including low-end Android and iPhone. No app store needed.</li>
+      </ul>
+    </section>
+
+    <section class="band">
+      <h2 data-t="readyH">Ready to turn your street green?</h2>
+      <a class="cta" href="#join" data-t="ctaJoin">Join the waitlist</a>
+    </section>
+  </main>
+
+  <footer>
+    <p data-t="foot">Made in Bengaluru. We keep your e-mail, your chosen area, your language and the day you joined. Nothing else is recorded: no IP address, no tracking, no cookies on this page.</p>
+    <details>
+      <summary data-t="rmH">Remove my e-mail</summary>
+      <form id="rm" novalidate style="margin-top:10px">
+        <div><label for="rmemail" data-t="email">Your e-mail</label><input id="rmemail" type="email" inputmode="email" autocomplete="email" maxlength="254"></div>
+        <button class="go" type="submit" data-t="rmGo">Remove it</button>
+        <p class="msg" id="rmmsg" role="status" aria-live="polite"></p>
+      </form>
+    </details>
+    <p><a href="https://github.com/N-T-SH/fogfoot" rel="noopener">GitHub</a></p>
+  </footer>
+</div>
+<script src="main.js" defer></script>
+</body>
+</html>

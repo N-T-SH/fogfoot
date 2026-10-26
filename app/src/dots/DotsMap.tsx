@@ -6,7 +6,6 @@ import { lazy, Suspense } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { buildField, dotsNear, dotsOnSide, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
 import { Coverage, WINDOW_DAYS } from "./coverage";
-import { itemIndex, makeSprites, type Sprites } from "./icons";
 import { CAPTURE, FrameSaver, type SaverState } from "../capture/saver";
 import { recentFrames } from "../capture/queue";
 
@@ -14,7 +13,6 @@ const SIM_EAT_RADIUS_M = 7;
 const GPS_EAT_RADIUS_M = 12; // wider than the sim: phone GPS wobbles; side (L/R) is not resolved in this prototype
 const MAX_GPS_ACC_M = 35;
 const WALK_SPEED_MS = 1.4;
-const ZOOM_DOTS = 16;        // below this zoom, show per-unit progress lines instead of individual dots
 
 interface Avatar { lat: number; lon: number; pulse: number; phase: number; face: 1 | -1; moving: boolean }
 
@@ -46,13 +44,7 @@ function drawWalker(ctx: CanvasRenderingContext2D, x: number, y: number, H: numb
 
 class DotLayer extends L.Layer {
   canvas!: HTMLCanvasElement;
-  sprites: Sprites;
-  itemIdx: Uint8Array;
-  constructor(private f: DotField, private cov: Coverage, private avatar: () => Avatar | null) {
-    super();
-    this.sprites = makeSprites(Math.round(24 * Math.min(window.devicePixelRatio || 1, 2)));
-    this.itemIdx = Uint8Array.from(f.key, (k) => itemIndex(k));   // which litter item sits at each dot (stable)
-  }
+  constructor(private f: DotField, private cov: Coverage, private avatar: () => Avatar | null) { super(); }
 
   onAdd(map: L.Map) {
     this.canvas = L.DomUtil.create("canvas", "dots-canvas") as HTMLCanvasElement;
@@ -83,44 +75,32 @@ class DotLayer extends L.Layer {
     const f = this.f, zoom = map.getZoom(), b = map.getBounds().pad(0.1);
     const pt = (lat: number, lon: number) => map.latLngToContainerPoint([lat, lon]);
 
-    // Every unit as a faint line (shared streets dashed); coloured by progress when zoomed out.
+    // Every street as a line: orange where nobody has walked it in the last month, green where someone has
+    // (darker = more recently). Mine and other people's walks look the same on purpose.
     ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const w = zoom >= 18 ? 7 : zoom >= 16 ? 5 : zoom >= 14 ? 3.5 : 2.5;
+    ctx.strokeStyle = "rgba(224,123,57,.7)"; ctx.lineWidth = w * 0.75;
     for (const u of f.units) {
       if (!b.intersects(L.latLngBounds(u.ll.map(([lo, la]) => [la, lo] as [number, number])))) continue;
-      let done = 0;
-      for (let i = u.first; i < u.first + u.count; i++) if (this.cov.state(f.key[i]) !== "none") done++;
-      const frac = u.count ? done / u.count : 0;
       ctx.beginPath();
       u.ll.forEach(([lo, la], i) => { const p = pt(la, lo); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
-      if (zoom >= ZOOM_DOTS) { ctx.strokeStyle = "rgba(40,70,160,.20)"; ctx.lineWidth = u.shared ? 1.5 : 2.5; }
-      else { ctx.strokeStyle = frac === 0 ? "rgba(60,90,170,.5)" : `hsl(${40 + 80 * frac} 85% 42%)`; ctx.lineWidth = 3.5; }
-      ctx.setLineDash(u.shared ? [4, 5] : []);
       ctx.stroke();
     }
-    ctx.setLineDash([]);
-
-    if (zoom >= ZOOM_DOTS) {
-      const S = zoom >= 18 ? 17 : zoom >= 17 ? 12 : 9;               // litter icon size, CSS px: small, so a street reads as a trail, not a pile
-      const r = zoom >= 18 ? 2.4 : zoom >= 17 ? 1.9 : 1.5;           // "picked up" marker size
-      const fresh: number[] = [], mid: number[] = [], old: number[] = [], items: number[] = [], heaps: number[] = [];
-      for (let i = 0; i < f.n; i++) {
-        if (!b.contains([f.lat[i], f.lon[i]])) continue;
-        const p = pt(f.lat[i], f.lon[i]), key = f.key[i];
-        if (this.cov.state(key) === "none") (f.power[i] ? heaps : items).push(p.x, p.y, this.itemIdx[i]);
-        else { const age = this.cov.ageDays(key)!; (age < 3 ? fresh : age < 14 ? mid : old).push(p.x, p.y); }
-      }
-      const circles = (xy: number[], rad: number) => { for (let i = 0; i < xy.length; i += 2) { ctx.moveTo(xy[i] + rad, xy[i + 1]); ctx.arc(xy[i], xy[i + 1], rad, 0, 6.2832); } };
-      const paint = (xy: number[], rad: number, color: string) => {
-        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); circles(xy, rad + 1.1); ctx.fill();
-        ctx.fillStyle = color; ctx.beginPath(); circles(xy, rad); ctx.fill();
-      };
-      paint(old, r, "#a5d6a1"); paint(mid, r, "#5fb865"); paint(fresh, r, "#2e8b3d");   // picked up: darker green = more recently
-      ctx.imageSmoothingEnabled = true;
-      const D = S * this.sprites.scale;                                                     // sprite is slightly larger than the icon: it includes the white edge
-      for (let i = 0; i < items.length; i += 3) ctx.drawImage(this.sprites.items[items[i + 2]], items[i] - D / 2, items[i + 1] - D / 2, D, D);
-      const H = S * 1.9 * this.sprites.scale * (1 + 0.08 * Math.sin(performance.now() / 260));                 // garbage heaps (hotspots) pulse gently
-      for (let i = 0; i < heaps.length; i += 3) ctx.drawImage(this.sprites.pile, heaps[i] - H / 2, heaps[i + 1] - H / 2, H, H);
+    const fresh: number[] = [], mid: number[] = [], old: number[] = [];
+    for (let i = 0; i < f.n; i++) {
+      if (!b.contains([f.lat[i], f.lon[i]])) continue;
+      const key = f.key[i];
+      if (this.cov.state(key) === "none") continue;
+      const age = this.cov.ageDays(key)!, p = pt(f.seg[i * 4 + 1], f.seg[i * 4]), q = pt(f.seg[i * 4 + 3], f.seg[i * 4 + 2]);
+      (age < 3 ? fresh : age < 14 ? mid : old).push(p.x, p.y, q.x, q.y);
     }
+    const strokeSegs = (v: number[], color: string, width: number) => {
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+      for (let i = 0; i < v.length; i += 4) { ctx.moveTo(v[i], v[i + 1]); ctx.lineTo(v[i + 2], v[i + 3]); }
+      ctx.stroke();
+    };
+    for (const v of [old, mid, fresh]) strokeSegs(v, "rgba(255,255,255,.9)", w + 2.5);                    // white edge so green reads on any map
+    strokeSegs(old, "#a5d6a1", w); strokeSegs(mid, "#5fb865", w); strokeSegs(fresh, "#1f8f3a", w);
 
     const a = this.avatar();
     if (a) { const p = pt(a.lat, a.lon); drawWalker(ctx, p.x, p.y, zoom >= 17 ? 30 : 24, a); }
@@ -345,8 +325,8 @@ function DotsApp({ data }: { data: DemoFile }) {
       <div class="mapwrap">
         <div ref={mapEl} class="map" />
         <div class="counter">
-          <div class="n">{hud.picked.toLocaleString()}<span> items picked up</span></div>
-          <div class="s">{hud.added ? `+${hud.added} this walk · ` : ""}all walkers {hud.covered.toLocaleString()}/{hud.total.toLocaleString()}{hud.days ? ` · clock +${hud.days}d` : ""}</div>
+          <div class="n">{(hud.picked * DOT_SPACING_M).toLocaleString()}<span> m walked by you</span></div>
+          <div class="s">{hud.added ? `+${hud.added * DOT_SPACING_M} m this walk · ` : ""}all walkers {hud.total ? Math.round((100 * hud.covered) / hud.total) : 0}% covered{hud.days ? ` · clock +${hud.days}d` : ""}</div>
           {hud.sync === "error" && <div class="s warn">Not shared right now; saved on this phone</div>}
         </div>
         <button class="expand" onClick={toggleExpanded}>{hud.expanded ? "Shrink map" : "Expand map"}</button>
