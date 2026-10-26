@@ -1,4 +1,4 @@
-// Dots concept: turns kerb units into a field of dots (one dot ~ one captured frame, every DOT_SPACING_M).
+// Turns kerb units into stretches of DOT_SPACING_M metres. Each stretch (a "dot" in the code) is one coverage record and one line segment on the map.
 export const DOT_SPACING_M = 10;
 const CELL_M = 40;
 
@@ -9,7 +9,9 @@ export interface DotField {
   units: { id: string; shared: boolean; ll: [number, number][]; m: [number, number][]; first: number; count: number }[];
   n: number;
   lon: Float64Array; lat: Float64Array; x: Float64Array; y: Float64Array;
-  unit: Int32Array; key: string[]; power: Uint8Array;
+  unit: Int32Array; key: string[];
+  /** The piece of street each dot stands for, as lon/lat pairs [lon0, lat0, lon1, lat1] (4 numbers per dot). */
+  seg: Float64Array;
   grid: Map<number, number[]>;
   endpoints: { unit: number; atEnd: boolean; x: number; y: number }[];
   endGrid: Map<number, number[]>;
@@ -24,13 +26,21 @@ export function geoKey(lon: number, lat: number): string {
   return `g${Math.max(0, Math.floor((lon - KEY_LON0) / KEY_DLON))}_${Math.max(0, Math.floor((lat - KEY_LAT0) / KEY_DLAT))}`;
 }
 
+/** The point `d` metres along a polyline given its cumulative lengths. */
+function pointAt(m: [number, number][], cum: number[], d: number): [number, number] {
+  let i = 1;
+  while (i < cum.length - 1 && cum[i] < d) i++;
+  const t = Math.min(1, Math.max(0, (d - cum[i - 1]) / Math.max(cum[i] - cum[i - 1], 1e-9)));
+  return [m[i - 1][0] + t * (m[i][0] - m[i - 1][0]), m[i - 1][1] + t * (m[i][1] - m[i - 1][1])];
+}
+
 const cellKey = (cx: number, cy: number) => (cx + 20000) * 40000 + (cy + 20000);
 
-export function buildField(d: DemoFile, powerEvery = 36): DotField {
+export function buildField(d: DemoFile): DotField {
   const [lon0, lat0] = d.center;
   const ky = 110700, kx = 111320 * Math.cos((lat0 * Math.PI) / 180);
   const units: DotField["units"] = [];
-  const lon: number[] = [], lat: number[] = [], x: number[] = [], y: number[] = [], unit: number[] = [], key: string[] = [], power: number[] = [];
+  const lon: number[] = [], lat: number[] = [], x: number[] = [], y: number[] = [], unit: number[] = [], key: string[] = [], segs: number[] = [];
   const grid = new Map<number, number[]>();
   const endpoints: DotField["endpoints"] = [];
   const endGrid = new Map<number, number[]>();
@@ -52,7 +62,8 @@ export function buildField(d: DemoFile, powerEvery = 36): DotField {
       const idx = lon.length;
       x.push(px); y.push(py); lon.push(lon0 + px / kx); lat.push(lat0 + py / ky);
       unit.push(ui); key.push(geoKey(lon0 + px / kx, lat0 + py / ky));
-      power.push(0);
+      const a = pointAt(m, cum, Math.max(0, s - DOT_SPACING_M / 2)), z = pointAt(m, cum, Math.min(L, s + DOT_SPACING_M / 2));
+      segs.push(lon0 + a[0] / kx, lat0 + a[1] / ky, lon0 + z[0] / kx, lat0 + z[1] / ky);
       put(grid, px, py, idx);
     }
     units.push({ id: u.id, shared: u.k === "s", ll: u.c, m, first, count: lon.length - first });
@@ -60,15 +71,10 @@ export function buildField(d: DemoFile, powerEvery = 36): DotField {
     endpoints.push({ unit: ui, atEnd: true, x: m[m.length - 1][0], y: m[m.length - 1][1] });
   });
   endpoints.forEach((e, i) => put(endGrid, e.x, e.y, i));
-  // Power pellets stand in for hotspots: a few well-spread dots.
-  for (let ui = 0; ui < units.length; ui += powerEvery) {
-    const u = units[ui];
-    if (u.count) power[u.first + (u.count >> 1)] = 1;
-  }
   return {
     lon0, lat0, kx, ky, units, n: lon.length,
     lon: Float64Array.from(lon), lat: Float64Array.from(lat), x: Float64Array.from(x), y: Float64Array.from(y),
-    unit: Int32Array.from(unit), key, power: Uint8Array.from(power), grid, endpoints, endGrid,
+    unit: Int32Array.from(unit), key, seg: Float64Array.from(segs), grid, endpoints, endGrid,
   };
 }
 

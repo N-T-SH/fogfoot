@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fogfoot: usable footpaths, mapped by people who walk them</title>
-<meta name="description" content="A free, community map of Bengaluru's footpaths. Walk, collect litter along the way, and help show which pavements are usable and clean.">
+<meta name="description" content="A free, community map of Bengaluru's footpaths. Walk, watch your footpath turn green, and help show which pavements are usable and clean.">
 <meta name="theme-color" content="#1b6e3a">
 <meta property="og:title" content="fogfoot">
 <meta property="og:description" content="Which Bengaluru footpaths can you actually walk on? A free, community map. Join the waitlist.">
@@ -57,11 +57,13 @@ details{margin-top:10px}summary{cursor:pointer}
   <main>
     <div class="hero">
       <h1 data-t="h1">Which footpaths can you actually walk on?</h1>
-      <p class="lead" data-t="lead"><span class="nm">fogfoot</span> is a free, community map of Bengaluru's footpaths. Walk, collect litter along the way, and help show which pavements are usable and clean.</p>
-      <svg class="path" viewBox="0 0 640 90" role="img" aria-label="A footpath with litter to collect">
-        <path d="M10 62 C120 20 220 80 330 46 S540 22 630 54" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="round" opacity=".28"/>
-        <g stroke="#fff" stroke-width="2"><circle cx="70" cy="48" r="9" fill="#ffd34d"/><circle cx="160" cy="58" r="9" fill="#e4572e"/><circle cx="262" cy="66" r="9" fill="#4aa3df"/><circle cx="355" cy="46" r="9" fill="#ffd34d"/></g>
-        <g stroke="#fff" stroke-width="2"><circle cx="440" cy="34" r="8" fill="#2e9e5b"/><circle cx="520" cy="30" r="8" fill="#2e9e5b"/><circle cx="598" cy="48" r="8" fill="#2e9e5b"/></g>
+      <p class="lead" data-t="lead"><span class="nm">fogfoot</span> is a free, community map of Bengaluru's footpaths. Walk, watch your footpath turn green, and help show which pavements are usable and clean.</p>
+      <svg class="path" viewBox="0 0 640 90" role="img" aria-label="A footpath that turns from orange to green as people walk it">
+        <g fill="none" stroke-linecap="round" stroke-width="10">
+          <path d="M10 62 C60 42 100 40 150 52" stroke="#2e9e5b"/>
+          <path d="M150 52 C200 64 250 78 330 46" stroke="#8fcf9a"/>
+          <path d="M330 46 C420 12 480 30 540 26 S600 40 630 54" stroke="#e07b39" opacity=".75"/>
+        </g>
       </svg>
       <a class="cta" id="try" href="https://fogfoot.vercel.app/" data-t="try">Try the early prototype (Domlur, Koramangala)</a>
     </div>
@@ -70,7 +72,7 @@ details{margin-top:10px}summary{cursor:pointer}
       <h2 data-t="howH">How it works</h2>
       <ol class="steps">
         <li><b data-t="s1h">Walk</b><span data-t="s1">Open the app and start a walk. Your phone stays in your hand; the camera view keeps the road ahead in sight.</span></li>
-        <li><b data-t="s2h">Collect</b><span data-t="s2">Litter along the footpath shows up as items to pick up. Green means someone covered that stretch in the last month.</span></li>
+        <li><b data-t="s2h">Cover</b><span data-t="s2">Streets you walk turn from orange to green. Green means someone walked that stretch in the last month; orange means nobody has yet.</span></li>
         <li><b data-t="s3h">Map</b><span data-t="s3">Together we build a public picture of which footpaths are usable and clean, starting in Domlur and Koramangala.</span></li>
       </ol>
     </section>
