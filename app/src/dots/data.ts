@@ -2,11 +2,11 @@
 export const DOT_SPACING_M = 10;
 const CELL_M = 40;
 
-export interface DemoFile { name: string; area: string; center: [number, number]; units: { id: string; k: "k" | "s"; c: [number, number][] }[] }
+export interface DemoFile { name: string; area: string; center: [number, number]; units: { id: string; k: "k" | "s"; c: [number, number][]; l?: 1 }[] }
 
 export interface DotField {
   lon0: number; lat0: number; kx: number; ky: number;
-  units: { id: string; shared: boolean; ll: [number, number][]; m: [number, number][]; first: number; count: number }[];
+  units: { id: string; shared: boolean; locked: boolean; ll: [number, number][]; m: [number, number][]; first: number; count: number }[];
   n: number;
   lon: Float64Array; lat: Float64Array; x: Float64Array; y: Float64Array;
   unit: Int32Array; key: string[];
@@ -66,7 +66,7 @@ export function buildField(d: DemoFile): DotField {
       segs.push(lon0 + a[0] / kx, lat0 + a[1] / ky, lon0 + z[0] / kx, lat0 + z[1] / ky);
       put(grid, px, py, idx);
     }
-    units.push({ id: u.id, shared: u.k === "s", ll: u.c, m, first, count: lon.length - first });
+    units.push({ id: u.id, shared: u.k === "s", locked: u.l === 1, ll: u.c, m, first, count: lon.length - first });
     endpoints.push({ unit: ui, atEnd: false, x: m[0][0], y: m[0][1] });
     endpoints.push({ unit: ui, atEnd: true, x: m[m.length - 1][0], y: m[m.length - 1][1] });
   });
