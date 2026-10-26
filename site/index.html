@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fogfoot: usable footpaths, mapped by people who walk them</title>
+<meta name="description" content="A free, community map of Bengaluru's footpaths. Walk, collect litter along the way, and help show which pavements are usable and clean.">
+<meta name="theme-color" content="#1b6e3a">
+<meta property="og:title" content="fogfoot">
+<meta property="og:description" content="Which Bengaluru footpaths can you actually walk on? A free, community map. Join the waitlist.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b6e3a'/%3E%3Ccircle cx='9' cy='20' r='3' fill='%23fff'/%3E%3Ccircle cx='16' cy='14' r='3' fill='%23ffd34d'/%3E%3Ccircle cx='23' cy='20' r='3' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#fbfaf6;--ink:#1c1f1d;--mute:#5b625d;--card:#fff;--line:#e3e1d8;--green:#1b6e3a;--green-ink:#fff;--sun:#ffd34d;--err:#a40000;--r:16px}
+@media (prefers-color-scheme:dark){:root{--bg:#121513;--ink:#ecefeb;--mute:#a3aaa4;--card:#1a1e1b;--line:#2b312c;--green:#4fbf7d;--green-ink:#0b1a11;--err:#ff8a80}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Kannada","Noto Sans Devanagari",sans-serif}
+a{color:var(--green)}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px}
+header{display:flex;align-items:center;gap:12px;padding:14px 0}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.01em;flex:1}
+select{font:inherit;font-size:15px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.hero{padding:28px 0 8px}
+h1{font-size:clamp(30px,7vw,46px);line-height:1.1;margin:0 0 14px;letter-spacing:-.02em}
+.lead{font-size:19px;color:var(--mute);margin:0 0 22px}
+.path{display:block;width:100%;height:auto;margin:6px 0 18px}
+section{padding:18px 0}
+h2{font-size:22px;margin:0 0 10px;letter-spacing:-.01em}
+.steps{display:grid;gap:12px;padding:0;margin:0;list-style:none}
+.steps li{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.steps b{display:block;margin-bottom:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+form{display:grid;gap:12px}
+label{font-weight:600;display:block;margin-bottom:4px}
+input[type=email],select.f{width:100%;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+.chk{font-weight:400;display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--mute)}
+.chk input{margin-top:5px;width:18px;height:18px;flex:none}
+button.go{font:inherit;font-weight:700;padding:13px 18px;border:0;border-radius:999px;background:var(--green);color:var(--green-ink);cursor:pointer}
+button.go[disabled]{opacity:.55}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.msg{min-height:1.4em;margin:0;font-weight:600}.msg.err{color:var(--err)}
+.mute{color:var(--mute);font-size:15px}
+ul.plain{margin:0;padding-left:20px}ul.plain li{margin:6px 0}
+footer{padding:26px 0 40px;border-top:1px solid var(--line);margin-top:20px;font-size:15px;color:var(--mute)}
+details{margin-top:10px}summary{cursor:pointer}
+.cta{display:inline-block;margin-top:6px;padding:11px 18px;border-radius:999px;border:2px solid var(--green);font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="nm">fogfoot</span></div>
+    <select id="lang" aria-label="Language"><option value="en">English</option><option value="kn">ಕನ್ನಡ</option><option value="hi">हिन्दी</option></select>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1 data-t="h1">Which footpaths can you actually walk on?</h1>
+      <p class="lead" data-t="lead"><span class="nm">fogfoot</span> is a free, community map of Bengaluru's footpaths. Walk, collect litter along the way, and help show which pavements are usable and clean.</p>
+      <svg class="path" viewBox="0 0 640 90" role="img" aria-label="A footpath with litter to collect">
+        <path d="M10 62 C120 20 220 80 330 46 S540 22 630 54" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="round" opacity=".28"/>
+        <g stroke="#fff" stroke-width="2"><circle cx="70" cy="48" r="9" fill="#ffd34d"/><circle cx="160" cy="58" r="9" fill="#e4572e"/><circle cx="262" cy="66" r="9" fill="#4aa3df"/><circle cx="355" cy="46" r="9" fill="#ffd34d"/></g>
+        <g stroke="#fff" stroke-width="2"><circle cx="440" cy="34" r="8" fill="#2e9e5b"/><circle cx="520" cy="30" r="8" fill="#2e9e5b"/><circle cx="598" cy="48" r="8" fill="#2e9e5b"/></g>
+      </svg>
+      <a class="cta" id="try" href="https://fogfoot.vercel.app/" data-t="try">Try the early prototype (Domlur, Koramangala)</a>
+    </div>
+
+    <section>
+      <h2 data-t="howH">How it works</h2>
+      <ol class="steps">
+        <li><b data-t="s1h">Walk</b><span data-t="s1">Open the app and start a walk. Your phone stays in your hand; the camera view keeps the road ahead in sight.</span></li>
+        <li><b data-t="s2h">Collect</b><span data-t="s2">Litter along the footpath shows up as items to pick up. Green means someone covered that stretch in the last month.</span></li>
+        <li><b data-t="s3h">Map</b><span data-t="s3">Together we build a public picture of which footpaths are usable and clean, starting in Domlur and Koramangala.</span></li>
+      </ol>
+    </section>
+
+    <section>
+      <h2 data-t="whyH">Why</h2>
+      <p data-t="why">In June 2026 the Supreme Court of India recognised the right to walk on footpaths as part of our fundamental rights. Most of us know what the pavement looks like on the ground, but there is no shared, current picture of it.</p>
+      <p class="mute"><a href="https://cprindia.org/wp-content/uploads/2026/06/Supreme-Court-right-to-walk-footpaths.pdf" rel="noopener" data-t="whyLink">Read a summary of the judgment (CPR)</a></p>
+    </section>
+
+    <section>
+      <h2 data-t="princH">What we promise</h2>
+      <ul class="plain">
+        <li data-t="p1">Free and not for profit. No ads, no selling data.</li>
+        <li data-t="p2">Open source (AGPL-3.0), so anyone can check what it does.</li>
+        <li data-t="p3">Private by design: photos stay on your phone, and shared walks record only which stretch was covered and on which day.</li>
+        <li data-t="p4">Built for ordinary phones, including low-end Android and iPhone. No app store needed.</li>
+      </ul>
+    </section>
+
+    <section id="join">
+      <h2 data-t="joinH">Join the waitlist</h2>
+      <div class="card">
+        <form id="wl" novalidate>
+          <div><label for="email" data-t="email">Your e-mail</label><input id="email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="254"></div>
+          <div><label for="area" data-t="area">Where do you walk most?</label>
+            <select id="area" class="f" name="area">
+              <option value="" data-t="aPick">Choose (optional)</option>
+              <option value="domlur">Domlur</option><option value="koramangala">Koramangala</option><option value="indiranagar">Indiranagar</option><option value="hsr">HSR Layout</option>
+              <option value="other-bengaluru" data-t="aOther">Elsewhere in Bengaluru</option><option value="outside-bengaluru" data-t="aOut">Outside Bengaluru</option>
+            </select></div>
+          <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+          <label class="chk"><input type="checkbox" id="agree" name="agree"><span data-t="agree">E-mail me when this opens in my area. I understand you keep my e-mail only for that, will not share it, and I can remove it any time on this page.</span></label>
+          <button class="go" id="send" type="submit" data-t="send">Join the waitlist</button>
+          <p class="msg" id="msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p data-t="foot">Made in Bengaluru. We keep your e-mail, your chosen area, your language and the day you joined. Nothing else is recorded: no IP address, no tracking, no cookies on this page.</p>
+    <details>
+      <summary data-t="rmH">Remove my e-mail</summary>
+      <form id="rm" novalidate style="margin-top:10px">
+        <div><label for="rmemail" data-t="email">Your e-mail</label><input id="rmemail" type="email" inputmode="email" autocomplete="email" maxlength="254"></div>
+        <button class="go" type="submit" data-t="rmGo">Remove it</button>
+        <p class="msg" id="rmmsg" role="status" aria-live="polite"></p>
+      </form>
+    </details>
+    <p><a href="https://github.com/N-T-SH/fogfoot" rel="noopener">GitHub</a></p>
+  </footer>
+</div>
+<script src="main.js" defer></script>
+</body>
+</html>
