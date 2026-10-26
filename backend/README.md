@@ -1,4 +1,4 @@
-# fogfoot backend (batch pipeline)
+# Greenlit backend (batch pipeline)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate

@@ -1,5 +1,5 @@
-# Gitleaks config for fogfoot.
-title = "fogfoot gitleaks config"
+# Gitleaks config for Greenlit.
+title = "Greenlit gitleaks config"
 
 [extend]
 useDefault = true

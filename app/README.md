@@ -1,4 +1,4 @@
-# fogfoot app
+# Greenlit app
 
 Vite + Preact + TypeScript PWA. Opens the **pick-up prototype** (camera on top, map below, litter items to pick up; see `docs/DOTS_CONCEPT.md`). Other views: `/#/spike` is Spike A, the capture viability test for low-end Android and iOS (see `IMPLEMENTATION_PLAN.md`, Phase 0); `/#/icons` is the icon set.
 
