@@ -4,15 +4,17 @@ Status: **prototype, concept under evaluation.** Try it at `/#/dots` (default de
 
 ## What you see
 - **Top two thirds: the live camera**, so you can look at the road ahead while checking the phone. The map is the bottom third; **Expand map** gives it the whole screen and shrinks the camera to a corner window. The map is never expanded by default.
-- **Lines, nothing else.** Every footpath is a line. **Orange** means nobody has walked that stretch in the last 30 days; **green** means someone has (darker green = more recently). Stretches are 10 m long. Mine and other people's walks look the same on purpose.
-- **Counter (bottom): metres walked by you** in the last 30 days, plus this walk and the share of streets covered by all walkers.
-- **Shared between walkers.** Anything anyone walked in the last 30 days shows green for everyone; after 30 days it turns orange again. Your walks are saved on the phone straight away and uploaded when online.
+- **Lines, coloured by condition.** Every footpath is a line cut into 10 m stretches. **Green**: assessed, few obstructions (clean and walkable). **Orange**: several obstructions. **Red**: severely deteriorated. **Grey**: not mapped yet. **Black**: locked / not open yet. A stretch someone has walked but that has not been assessed yet is drawn grey with a white edge ("walked, awaiting assessment"). The **Key** button shows this legend. The thresholds are one setting, `COND_AT` in `app/src/dots/condition.ts` (orange at 2 obstructions, red at 4).
+- **Where assessments come from.** Obstruction counts per stretch are read from an optional static file `conditions-<area>.json` (`{ "<stretch key>": count }`), to be written by the nightly batch once detection exists. None exists yet, so real walks show "awaiting assessment". `#/dots?demo=conditions` fills in made-up counts for walked stretches so the colours can be seen; the screen says so.
+- **Locked streets** are units marked `"l": 1` in the demo units file; none are marked yet.
+- **Counter (bottom): metres walked by you** in the last 30 days, plus this walk and the share of streets mapped by all walkers.
+- **Shared between walkers.** Anything anyone walked in the last 30 days counts as mapped for everyone; after 30 days it goes back to unmapped. Your walks are saved on the phone straight away and uploaded when online.
 - A walking-person silhouette marks you on the map.
 
 History: an earlier version showed litter icons and garbage heaps as game tokens (see git history before the "lines" change). They were removed because an icon at a spot reads as a claim that litter was seen there, which we cannot know without real detections. Keep any future game layer apart from the compliance layer (what the footpath is actually like).
 
 ## The idea
-Every kerb unit is cut into stretches of `DOT_SPACING_M` (10 m), each identified by a fixed 5 m grid cell. Walking a stretch colours it green for 30 days. Unit progress and ward coverage are just the share of stretches that are green.
+Every kerb unit is cut into stretches of `DOT_SPACING_M` (10 m), each identified by a fixed 5 m grid cell. Walking a stretch maps it for 30 days. Unit progress and ward coverage are the share of stretches mapped.
 
 ## How it maps onto the existing design (original dots framing)
 

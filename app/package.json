@@ -8,7 +8,7 @@
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.api.json",
-    "test": "node --import tsx --test api/_lib/coverage.test.ts api/_lib/account.test.ts api/_lib/waitlist.test.ts src/dots/coverage.test.ts src/capture/rules.test.ts src/dots/data.test.ts"
+    "test": "node --import tsx --test api/_lib/coverage.test.ts api/_lib/account.test.ts api/_lib/waitlist.test.ts src/dots/coverage.test.ts src/capture/rules.test.ts src/dots/data.test.ts src/dots/condition.test.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

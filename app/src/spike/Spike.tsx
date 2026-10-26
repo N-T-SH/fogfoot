@@ -246,7 +246,7 @@ export function Spike() {
   async function shareReport() {
     const text = report();
     try {
-      if (navigator.share) await navigator.share({ title: "fogfoot Spike A report", text });
+      if (navigator.share) await navigator.share({ title: "Greenlit Spike A report", text });
       else { await navigator.clipboard.writeText(text); setMsg("Sharing not supported here; report copied instead"); }
     } catch (e) { if ((e as Error).name !== "AbortError") setMsg(`Share failed: ${(e as Error).message}`); }
   }
@@ -260,7 +260,7 @@ export function Spike() {
   const mb = (n: number) => (n / 1e6).toFixed(1);
   return (
     <main>
-      <h1>fogfoot · Spike A</h1>
+      <h1>Greenlit · Spike A</h1>
       <div style="color:var(--mut)">Capture viability test. Hold the phone at chest height, camera forward, and walk ~2 km.</div>
       <video ref={video} playsInline muted />
       <div class="row">

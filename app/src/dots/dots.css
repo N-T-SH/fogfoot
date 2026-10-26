@@ -69,3 +69,10 @@
 .acct small { color: #666; }
 .acct-msg { color: #a40000; margin: 0; }
 .gbtn { min-height: 44px; }
+
+/* map key */
+.legend { position: absolute; z-index: 1000; left: 8px; bottom: 66px; background: #fffffff2; border-radius: 12px; padding: 8px 10px; box-shadow: 0 1px 4px #0003; font-size: 12.5px; color: #1b2330; display: grid; gap: 4px; max-width: calc(100% - 16px); }
+.legend .sw { display: inline-block; width: 22px; height: 6px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
+.legend .sw.green { background: #1f9d4d; } .legend .sw.orange { background: #f08a24; } .legend .sw.red { background: #d32f2f; }
+.legend .sw.grey { background: #9aa3ad; opacity: .7; } .legend .sw.pending { background: #9aa3ad; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #c9d1e4; } .legend .sw.black { background: #15171b; }
+.legend .warn { color: #b71c1c; }

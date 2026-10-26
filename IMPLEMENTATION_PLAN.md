@@ -1,6 +1,6 @@
-# fogfoot — Implementation Plan
+# Greenlit — Implementation Plan
 
-> Name: **fogfoot**. A citizen-powered, monthly-refreshed, open record of which footpaths in Bengaluru meet the Supreme Court's right-to-walk standard, built from everyday walks and gamified with location-based hotspots.
+> Name: **Greenlit** (formerly fogfoot; the CLI, Python package and env-var names keep the old `fogfoot` prefix). A citizen-powered, monthly-refreshed, open record of which footpaths in Bengaluru meet the Supreme Court's right-to-walk standard, built from everyday walks and gamified with location-based hotspots.
 
 This plan is written for Claude Code. Work phase by phase. Each phase has acceptance criteria; do not start the next phase until the current one passes. Where this plan says **SPIKE**, build a throwaway proof first and report findings before committing to the approach.
 
@@ -144,7 +144,7 @@ No cash payouts, paid verification, paid rider fleets, employer challenges or CS
 
 ### 3.2 Free, non-commercial operating model: minimise server compute
 
-fogfoot is a free public-interest service, so the design pushes work to the places where it is free: the user's device (only for cheap, non-ML work), the CDN (static files), the crowd (Verify) and a nightly CPU batch. Principles:
+Greenlit is a free public-interest service, so the design pushes work to the places where it is free: the user's device (only for cheap, non-ML work), the CDN (static files), the crowd (Verify) and a nightly CPU batch. Principles:
 
 1. **Static first.** Kerb units, compliance status, fog, ward standings, hotspots and leaderboards are pre-built nightly (hourly for hotspots/leaderboards if cheap) as PMTiles and small JSON snapshots on the CDN. Reading the map costs no compute.
 2. **Thin edge, no always-on server.** Workers + D1 + R2 on free tiers handle only writes: sign-in token check, presigned uploads, Verify votes, hotspot check-ins, provisional points. Python never serves requests.

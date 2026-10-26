@@ -6,6 +6,7 @@ import { lazy, Suspense } from "preact/compat";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { buildField, dotsNear, dotsOnSide, randomRoute, toLocal, type DemoFile, type DotField, DOT_SPACING_M } from "./data";
 import { Coverage, WINDOW_DAYS } from "./coverage";
+import { COND_COLOR, demoIssues, stretchCond, type Cond } from "./condition";
 import { CAPTURE, FrameSaver, type SaverState } from "../capture/saver";
 import { recentFrames } from "../capture/queue";
 
@@ -44,7 +45,7 @@ function drawWalker(ctx: CanvasRenderingContext2D, x: number, y: number, H: numb
 
 class DotLayer extends L.Layer {
   canvas!: HTMLCanvasElement;
-  constructor(private f: DotField, private cov: Coverage, private avatar: () => Avatar | null) { super(); }
+  constructor(private f: DotField, private cov: Coverage, private avatar: () => Avatar | null, private conds: Map<string, number>, private demo: boolean) { super(); }
 
   onAdd(map: L.Map) {
     this.canvas = L.DomUtil.create("canvas", "dots-canvas") as HTMLCanvasElement;
@@ -75,32 +76,37 @@ class DotLayer extends L.Layer {
     const f = this.f, zoom = map.getZoom(), b = map.getBounds().pad(0.1);
     const pt = (lat: number, lon: number) => map.latLngToContainerPoint([lat, lon]);
 
-    // Every street as a line: orange where nobody has walked it in the last month, green where someone has
-    // (darker = more recently). Mine and other people's walks look the same on purpose.
+    // Every street is a line. Grey = not mapped yet, black = locked, and once a stretch has been assessed it is
+    // green (few obstructions), orange (several) or red (severely deteriorated). Walked-but-not-assessed stretches
+    // stay grey with a white edge. Detection is not on yet, so real assessments come from conditions-<area>.json.
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     const w = zoom >= 18 ? 7 : zoom >= 16 ? 5 : zoom >= 14 ? 3.5 : 2.5;
-    ctx.strokeStyle = "rgba(224,123,57,.7)"; ctx.lineWidth = w * 0.75;
     for (const u of f.units) {
       if (!b.intersects(L.latLngBounds(u.ll.map(([lo, la]) => [la, lo] as [number, number])))) continue;
       ctx.beginPath();
       u.ll.forEach(([lo, la], i) => { const p = pt(la, lo); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.strokeStyle = u.locked ? COND_COLOR.black : "rgba(154,163,173,.7)"; ctx.lineWidth = w * 0.75;
       ctx.stroke();
     }
-    const fresh: number[] = [], mid: number[] = [], old: number[] = [];
+    const groups: Record<Cond, number[]> = { green: [], orange: [], red: [], grey: [], black: [], pending: [] };
     for (let i = 0; i < f.n; i++) {
-      if (!b.contains([f.lat[i], f.lon[i]])) continue;
-      const key = f.key[i];
-      if (this.cov.state(key) === "none") continue;
-      const age = this.cov.ageDays(key)!, p = pt(f.seg[i * 4 + 1], f.seg[i * 4]), q = pt(f.seg[i * 4 + 3], f.seg[i * 4 + 2]);
-      (age < 3 ? fresh : age < 14 ? mid : old).push(p.x, p.y, q.x, q.y);
+      if (f.units[f.unit[i]].locked || !b.contains([f.lat[i], f.lon[i]])) continue;
+      const key = f.key[i], walked = this.cov.state(key) !== "none";
+      const issues = this.conds.get(key) ?? (this.demo && walked ? demoIssues(key) : undefined);
+      const c = stretchCond({ locked: false, walked, issues });
+      if (c === "grey") continue;
+      const p = pt(f.seg[i * 4 + 1], f.seg[i * 4]), q = pt(f.seg[i * 4 + 3], f.seg[i * 4 + 2]);
+      groups[c].push(p.x, p.y, q.x, q.y);
     }
     const strokeSegs = (v: number[], color: string, width: number) => {
       ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
       for (let i = 0; i < v.length; i += 4) { ctx.moveTo(v[i], v[i + 1]); ctx.lineTo(v[i + 2], v[i + 3]); }
       ctx.stroke();
     };
-    for (const v of [old, mid, fresh]) strokeSegs(v, "rgba(255,255,255,.9)", w + 2.5);                    // white edge so green reads on any map
-    strokeSegs(old, "#a5d6a1", w); strokeSegs(mid, "#5fb865", w); strokeSegs(fresh, "#1f8f3a", w);
+    for (const c of ["pending", "green", "orange", "red"] as const) {
+      strokeSegs(groups[c], "rgba(255,255,255,.92)", w + 2.5);                                        // white edge so colours read on any map
+      strokeSegs(groups[c], COND_COLOR[c], w);
+    }
 
     const a = this.avatar();
     if (a) { const p = pt(a.lat, a.lon); drawWalker(ctx, p.x, p.y, zoom >= 17 ? 30 : 24, a); }
@@ -109,14 +115,14 @@ class DotLayer extends L.Layer {
 
 const AccountPanel = lazy(() => import("../account/AccountPanel").then((m) => ({ default: m.AccountPanel })));
 
-function DotsApp({ data }: { data: DemoFile }) {
+function DotsApp({ data, conds, demo }: { data: DemoFile; conds: Map<string, number>; demo: boolean }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const live = useRef({
     f: null as DotField | null, cov: null as Coverage | null, layer: null as DotLayer | null, map: null as L.Map | null,
     avatar: null as Avatar | null, mode: "idle" as "idle" | "sim" | "gps", route: [] as [number, number][], cum: [] as number[], s: 0,
     lastDraw: 0, speed: 12, saver: null as FrameSaver | null, stream: null as MediaStream | null, wake: null as { release(): Promise<void> } | null, lastHud: 0, lastBuzz: 0, sideUnit: -1, lastFrame: 0, lastPan: 0, watch: 0, raf: 0, tiles: null as L.TileLayer | null,
   });
-  const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false, gallery: false, account: false });
+  const [hud, setHud] = useState({ covered: 0, picked: 0, total: 0, added: 0, refreshed: 0, mode: "idle" as string, speed: 12, tiles: true, days: 0, msg: "", sync: "off" as string, syncDetail: "", cam: "off" as "off" | "on" | "denied", camMsg: "", expanded: false, gallery: false, account: false, key: false });
   const [frames, setFrames] = useState<SaverState>({ on: true, count: 0, bytes: 0, blurry: 0, dark: 0, full: false, capBytes: CAPTURE.capMB * 1e6, error: "" });
   const videoEl = useRef<HTMLVideoElement>(null);
   const hudRef = useRef(hud); hudRef.current = hud;
@@ -278,7 +284,7 @@ function DotsApp({ data }: { data: DemoFile }) {
     map.attributionControl.setPrefix(false);
     L.control.zoom({ position: "topright" }).addTo(map);
     L_.map = map;
-    L_.layer = new DotLayer(L_.f, L_.cov, () => L_.avatar).addTo(map) as DotLayer;
+    L_.layer = new DotLayer(L_.f, L_.cov, () => L_.avatar, conds, demo).addTo(map) as DotLayer;
     setTiles(true);
     const beat = setInterval(() => { if (L_.mode === "idle") L_.layer?.redraw(); }, 400); // pellets pulse
     L_.saver = new FrameSaver(() => videoEl.current, () => setFrames({ ...L_.saver!.state }));
@@ -326,9 +332,17 @@ function DotsApp({ data }: { data: DemoFile }) {
         <div ref={mapEl} class="map" />
         <div class="counter">
           <div class="n">{(hud.picked * DOT_SPACING_M).toLocaleString()}<span> m walked by you</span></div>
-          <div class="s">{hud.added ? `+${hud.added * DOT_SPACING_M} m this walk · ` : ""}all walkers {hud.total ? Math.round((100 * hud.covered) / hud.total) : 0}% covered{hud.days ? ` · clock +${hud.days}d` : ""}</div>
+          <div class="s">{hud.added ? `+${hud.added * DOT_SPACING_M} m this walk · ` : ""}all walkers {hud.total ? Math.round((100 * hud.covered) / hud.total) : 0}% mapped{hud.days ? ` · clock +${hud.days}d` : ""}</div>
           {hud.sync === "error" && <div class="s warn">Not shared right now; saved on this phone</div>}
         </div>
+        {hud.key && (
+          <div class="legend" role="note">
+            {(["green", "orange", "red", "grey", "pending", "black"] as const).map((c) => (
+              <div><i class={`sw ${c}`} />{{ green: "Clean, few obstructions", orange: "Several obstructions", red: "Severely deteriorated", grey: "Not mapped yet", pending: "Walked, awaiting assessment", black: "Locked" }[c]}</div>
+            ))}
+            {demo && <div class="warn">Demo colours: made up, not real detections</div>}
+          </div>
+        )}
         <button class="expand" onClick={toggleExpanded}>{hud.expanded ? "Shrink map" : "Expand map"}</button>
         <div class="strip">
           <button class={hud.mode === "gps" ? "on" : ""} onClick={() => (hud.mode === "gps" ? stop() : startGps())}>{hud.mode === "gps" ? "Stop walk" : "Start walk (GPS)"}</button>
@@ -337,6 +351,7 @@ function DotsApp({ data }: { data: DemoFile }) {
           <button onClick={() => { live.current.cov!.advance(10); live.current.layer?.redraw(); refreshHud(); }}>+10 days</button>
           <button onClick={() => live.current.saver?.setOn(!frames.on)} class={frames.on ? "on" : ""}>Photos: {frames.on ? "on" : "off"}</button>
           <button onClick={() => patch({ gallery: true })}>Photos ({frames.count})</button>
+          <button class={hud.key ? "on" : ""} onClick={() => patch({ key: !hud.key })}>Key</button>
           <button onClick={() => patch({ account: true })}>Account</button>
           <button onClick={toggleTiles} class={hud.tiles ? "on" : ""}>Street map</button>
           <button onClick={() => { stop(); live.current.cov!.forgetMine(); counters.current = { added: 0, refreshed: 0 }; live.current.layer?.redraw(); refreshHud(); }}>Forget mine</button>
@@ -388,5 +403,12 @@ export async function mountDots(el: HTMLElement) {
   const area = new URLSearchParams(location.hash.split("?")[1] ?? "").get("area") ?? "domlur"; // #/dots?area=koramangala
   const file = area === "koramangala" ? "demo-units-koramangala.json" : "demo-units-domlur.json";
   const data = (await (await fetch(import.meta.env.BASE_URL + file)).json()) as DemoFile;
-  render(<DotsApp data={data} />, el);
+  // Assessments (obstruction counts per stretch) arrive from the nightly batch as a static file; none exist yet.
+  const conds = new Map<string, number>();
+  try {
+    const r = await fetch(`${import.meta.env.BASE_URL}conditions-${data.area}.json`);
+    if (r.ok && (r.headers.get("content-type") ?? "").includes("json")) for (const [k, v] of Object.entries((await r.json()) as Record<string, number>)) if (Number.isFinite(v)) conds.set(k, v);
+  } catch { /* no assessments yet */ }
+  const demo = new URLSearchParams(location.hash.split("?")[1] ?? "").get("demo") === "conditions";   // #/dots?demo=conditions
+  render(<DotsApp data={data} conds={conds} demo={demo} />, el);
 }

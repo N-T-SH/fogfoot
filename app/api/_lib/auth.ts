@@ -86,7 +86,7 @@ export const setCookie = (value: string) => `${COOKIE}=${value}; Path=/; HttpOnl
 export const clearCookie = () => `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
 // ---- handles ----------------------------------------------------------------------------------------------------
-const RESERVED = new Set(["admin", "fogfoot", "moderator", "support", "official", "anonymous", "null", "undefined"]);
+const RESERVED = new Set(["admin", "fogfoot", "greenlit", "moderator", "support", "official", "anonymous", "null", "undefined"]);
 export function validHandle(h: unknown): h is string {
   return typeof h === "string" && /^[A-Za-z0-9_]{3,20}$/.test(h) && !RESERVED.has(h.toLowerCase());
 }

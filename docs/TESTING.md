@@ -1,4 +1,4 @@
-# Testing fogfoot capture on real phones
+# Testing Greenlit capture on real phones
 
 We need numbers from cheap Android phones and from iPhones. You do **not** need to walk for the first test.
 

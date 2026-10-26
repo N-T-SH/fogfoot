@@ -8,8 +8,8 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "fogfoot",
-        short_name: "fogfoot",
+        name: "Greenlit",
+        short_name: "Greenlit",
         description: "Walk. Clear the fog. Map which footpaths work.",
         theme_color: "#111111",
         background_color: "#111111",
