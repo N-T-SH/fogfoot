@@ -44,6 +44,7 @@ button.go[disabled]{opacity:.55}
 ul.plain{margin:0;padding-left:20px}ul.plain li{margin:6px 0}
 footer{padding:26px 0 40px;border-top:1px solid var(--line);margin-top:20px;font-size:15px;color:var(--mute)}
 details{margin-top:10px}summary{cursor:pointer}
+.tag{display:inline-block;font-style:normal;font-size:12px;font-weight:700;padding:1px 8px;margin-left:4px;border-radius:999px;border:1px solid var(--line);color:var(--mute);white-space:nowrap}.tag.ok{border-color:var(--green);color:var(--green)}.status{margin:14px 0 0}
 .cta{display:inline-block;margin-top:6px;padding:11px 18px;border-radius:999px;border:2px solid var(--green);font-weight:700;text-decoration:none}
 </style>
 </head>
@@ -57,7 +58,7 @@ details{margin-top:10px}summary{cursor:pointer}
   <main>
     <div class="hero">
       <h1 data-t="h1">Which footpaths can you actually walk on?</h1>
-      <p class="lead" data-t="lead"><span class="nm">fogfoot</span> is a free, community map of Bengaluru's footpaths. Walk, watch your footpath turn green, and help show which pavements are usable and clean.</p>
+      <p class="lead" data-t="lead"><span class="nm">fogfoot</span> is a free, community map of Bengaluru's footpaths. Just walk with your phone's camera on. It tags problems for you, and every street you cover turns from orange to green.</p>
       <svg class="path" viewBox="0 0 640 90" role="img" aria-label="A footpath that turns from orange to green as people walk it">
         <g fill="none" stroke-linecap="round" stroke-width="10">
           <path d="M10 62 C60 42 100 40 150 52" stroke="#2e9e5b"/>
@@ -66,14 +67,16 @@ details{margin-top:10px}summary{cursor:pointer}
         </g>
       </svg>
       <a class="cta" id="try" href="https://fogfoot.vercel.app/" data-t="try">Try the early prototype (Domlur, Koramangala)</a>
+      <p class="mute status" data-t="status"><b>Today:</b> the walking game and photo capture on your phone. <b>Coming next:</b> automatic problem tagging, once faces and number plates can be blurred before anything leaves your phone.</p>
     </div>
 
     <section>
       <h2 data-t="howH">How it works</h2>
       <ol class="steps">
-        <li><b data-t="s1h">Walk</b><span data-t="s1">Open the app and start a walk. Your phone stays in your hand; the camera view keeps the road ahead in sight.</span></li>
-        <li><b data-t="s2h">Cover</b><span data-t="s2">Streets you walk turn from orange to green. Green means someone walked that stretch in the last month; orange means nobody has yet.</span></li>
-        <li><b data-t="s3h">Map</b><span data-t="s3">Together we build a public picture of which footpaths are usable and clean, starting in Domlur and Koramangala.</span></li>
+        <li><b data-t="s1h">Just walk</b><span data-t="s1">Open the app, start a walk and keep the camera on. No forms, no typing, no photos to pick. The camera view also keeps the road ahead in sight while you check your phone.</span></li>
+        <li><b data-t="s2h">It tags the problems</b><span data-t="s2">As you go, the footpath is checked and problems are tagged to the exact stretch automatically: parked vehicles, shop spillover, broken or uneven slabs, open drains, garbage, low wires, no footpath at all. <i class="tag" data-t="soon">Coming soon</i></span></li>
+        <li><b data-t="s3h">Play</b><span data-t="s3">Every 10 m you walk turns from orange to green on a map shared with everyone, and your metres add up. Cover your ward, keep it green as the month rolls on, and see how your neighbourhood compares. Points, streaks and ward standings are on the way. <i class="tag ok" data-t="today">Works today</i></span></li>
+        <li><b data-t="s4h">Map</b><span data-t="s4">Together we build a public, current picture of which footpaths are usable and clean, starting in Domlur and Koramangala.</span></li>
       </ol>
     </section>
 
